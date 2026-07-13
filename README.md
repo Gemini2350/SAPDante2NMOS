@@ -56,6 +56,32 @@ pip install pyinstaller
 build-windows.bat       # -> dist\SAP-2-NMOS\SAP-2-NMOS.exe  (run on Windows)
 ```
 
+## Linux (Ubuntu)
+
+The headless and browser modes work out of the box:
+
+```sh
+python3 -m venv .venv && .venv/bin/pip install -r requirements-docker.txt
+.venv/bin/python app.py --browser     # UI in the default browser
+.venv/bin/python app.py --headless    # daemon mode, UI at http://<host>:8085/ui/
+```
+
+For a native window install the WebKit2GTK bindings first
+(`sudo apt install python3-gi gir1.2-webkit2-4.1`, then `pip install pywebview`).
+
+## Docker
+
+```sh
+docker compose up -d --build
+# UI: http://<host>:8085/ui/
+```
+
+The container runs headless; the web UI works from any browser. **Host networking is
+required** (already set in `docker-compose.yml`): the SAP listener needs the host's
+multicast traffic and the announced manifest URLs must carry a reachable IP. This only
+works on Linux hosts — Docker Desktop on macOS/Windows isolates the host network.
+Configuration (node IDs, manual SDPs, settings) persists in the `sap2nmos-config` volume.
+
 ## Legacy CLI
 
 The original single-file script is kept as `SAP2NMOS.py`:

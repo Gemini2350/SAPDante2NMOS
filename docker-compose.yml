@@ -1,0 +1,18 @@
+services:
+  sap2nmos:
+    build: .
+    container_name: sap2nmos
+    # Host networking is required: the SAP listener needs the host's multicast
+    # traffic, and the announced manifest URLs must carry a reachable host IP.
+    # (Only effective on Linux hosts — Docker Desktop on macOS/Windows isolates
+    # the host network.)
+    network_mode: host
+    volumes:
+      - sap2nmos-config:/config
+    restart: unless-stopped
+    # Registry is found via unicast DNS-SD by default; to pin it manually:
+    # command: ["python", "app.py", "--headless",
+    #           "--registrar", "http://10.1.200.100:8010/x-nmos/registration/v1.3"]
+
+volumes:
+  sap2nmos-config:
