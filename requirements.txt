@@ -1,0 +1,4 @@
+requests>=2.28
+ifaddr>=0.2
+pywebview>=5.0
+dnspython>=2.4

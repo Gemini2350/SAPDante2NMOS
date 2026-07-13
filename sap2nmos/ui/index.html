@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SAP-2-NMOS</title>
+<link rel="stylesheet" href="/ui/style.css">
+</head>
+<body>
+<header>
+  <div class="brand">
+    <h1>SAP-2-NMOS</h1>
+    <span class="subtitle">SAP discovery &rarr; NMOS registry</span>
+  </div>
+  <div class="header-status">
+    <span id="registry-chip" class="chip">registry</span>
+    <span id="sap-chip" class="chip neutral" title="SAP packets received">SAP: 0</span>
+  </div>
+  <div class="header-actions">
+    <button id="btn-add" class="primary">+ Add SDP</button>
+    <button id="btn-settings">Settings</button>
+    <button id="btn-toggle">Stop</button>
+  </div>
+</header>
+
+<main>
+  <table id="streams">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Multicast</th>
+        <th>Port</th>
+        <th>Format</th>
+        <th>Source IP</th>
+        <th>Origin</th>
+        <th>Status</th>
+        <th>Last seen</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="stream-rows"></tbody>
+  </table>
+  <div id="empty" class="empty" hidden>
+    No streams discovered yet. Listening for SAP announcements&hellip;<br>
+    <small>You can also add a stream manually with <b>+ Add SDP</b>.</small>
+  </div>
+</main>
+
+<section id="log-panel">
+  <div class="log-header" id="log-toggle">Log <span id="log-arrow">&#9662;</span></div>
+  <pre id="log" hidden></pre>
+</section>
+
+<!-- Add SDP modal -->
+<div class="modal-backdrop" id="modal-add" hidden>
+  <div class="modal">
+    <h2>Add manual SDP</h2>
+    <p class="hint">Paste an SDP description or load a <code>.sdp</code> file.
+    The stream will be registered like a discovered SAP announcement and persists across restarts.</p>
+    <textarea id="sdp-text" rows="14" spellcheck="false"
+      placeholder="v=0&#10;o=- 1 1 IN IP4 10.0.0.5&#10;s=My Stream&#10;c=IN IP4 239.69.1.1/32&#10;t=0 0&#10;m=audio 5004 RTP/AVP 97&#10;a=rtpmap:97 L24/48000/2"></textarea>
+    <div class="modal-row">
+      <input type="file" id="sdp-file" accept=".sdp,text/plain">
+    </div>
+    <div class="error" id="add-error"></div>
+    <div class="modal-actions">
+      <button class="secondary" data-close>Cancel</button>
+      <button class="primary" id="btn-add-confirm">Add stream</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings modal -->
+<div class="modal-backdrop" id="modal-settings" hidden>
+  <div class="modal">
+    <h2>Settings</h2>
+    <label>NMOS Registration API URL <small>(manual override — leave empty to use auto-discovery)</small>
+      <input type="text" id="cfg-registrar" placeholder="empty = auto-discover via DNS-SD">
+    </label>
+    <label>Registry discovery (unicast DNS-SD)
+      <span class="row-inline">
+        <input type="text" id="cfg-dnsdomain" placeholder="domain (empty = system search domains)">
+        <button type="button" id="btn-discover">Discover</button>
+      </span>
+    </label>
+    <div id="discover-results"></div>
+    <label class="checkline">
+      <input type="checkbox" id="cfg-autoreg">
+      Automatically use the discovered registry
+    </label>
+    <label>DNS server override <small>(optional, e.g. the media network's DNS)</small>
+      <input type="text" id="cfg-dnsns" placeholder="10.1.200.10 or 10.1.200.10:53">
+    </label>
+    <label>Network interface (SAP listener + announced IP)
+      <select id="cfg-interface"></select>
+    </label>
+    <div class="grid2">
+      <label>SAP group
+        <input type="text" id="cfg-group">
+      </label>
+      <label>SAP port
+        <input type="number" id="cfg-sapport">
+      </label>
+      <label>Stream timeout (s)
+        <input type="number" id="cfg-timeout">
+      </label>
+      <label>HTTP port <small>(restart app to apply)</small>
+        <input type="number" id="cfg-httpport">
+      </label>
+    </div>
+    <div class="error" id="settings-error"></div>
+    <div class="modal-actions">
+      <button class="secondary" data-close>Cancel</button>
+      <button class="primary" id="btn-settings-save">Save &amp; restart engine</button>
+    </div>
+  </div>
+</div>
+
+<!-- SDP viewer modal -->
+<div class="modal-backdrop" id="modal-sdp" hidden>
+  <div class="modal">
+    <h2 id="sdp-view-title">SDP</h2>
+    <pre id="sdp-view" class="sdp-view"></pre>
+    <div class="modal-actions">
+      <button class="secondary" id="btn-copy-sdp">Copy</button>
+      <button class="primary" data-close>Close</button>
+    </div>
+  </div>
+</div>
+
+<script src="/ui/app.js"></script>
+</body>
+</html>
