@@ -15,7 +15,11 @@ DEFAULTS = {
     "stream_timeout": 120,
     "node_id": "",
     "device_id": "",
+    "rx_device_id": "",
     "manual_sdps": [],
+    "receivers": [],
+    "apply_mode": False,
+    "device_scan_interval": 60,
 }
 
 
@@ -46,6 +50,9 @@ class Config:
         if not self.data["device_id"]:
             self.data["device_id"] = str(uuid.uuid4())
             changed = True
+        if not self.data["rx_device_id"]:
+            self.data["rx_device_id"] = str(uuid.uuid4())
+            changed = True
         if changed:
             self.save()
 
@@ -71,4 +78,5 @@ class Config:
         self.data[key] = value
 
     def public(self):
-        return {k: v for k, v in self.data.items() if k != "manual_sdps"}
+        return {k: v for k, v in self.data.items()
+                if k not in ("manual_sdps", "receivers")}

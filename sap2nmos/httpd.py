@@ -104,7 +104,8 @@ def make_server(engine, config):
                     body = json.loads(self.read_body() or b"{}")
                     allowed = ("registrar", "auto_registrar", "dns_sd_domain",
                                "dns_sd_nameserver", "interface_ip", "sap_group",
-                               "sap_port", "stream_timeout", "http_port")
+                               "sap_port", "stream_timeout", "http_port",
+                               "apply_mode", "device_scan_interval")
                     for key in allowed:
                         if key in body:
                             config[key] = body[key]
@@ -117,6 +118,22 @@ def make_server(engine, config):
                 if path == "/api/stop":
                     engine.stop()
                     return self.send_json({"ok": True})
+                if path == "/api/receivers":
+                    body = json.loads(self.read_body() or b"{}")
+                    label = (body.get("label") or "").strip()
+                    ip = (body.get("dante_device_ip") or "").strip()
+                    base_ch = int(body.get("dante_base_channel") or 0)
+                    channels = int(body.get("channels") or 2)
+                    if not label or not ip or base_ch < 1:
+                        raise ValueError("label, dante_device_ip and "
+                                         "dante_base_channel (>=1) are required")
+                    rx = engine.add_receiver(label, ip, base_ch, channels)
+                    return self.send_json({"ok": True, "nmos_id": rx.nmos_id})
+                if path == "/api/devices/refresh":
+                    import threading
+                    threading.Thread(target=engine.receivers.refresh_devices,
+                                     daemon=True).start()
+                    return self.send_json({"ok": True})
             except ValueError as e:
                 return self.send_json({"error": str(e)}, 400)
             return self.send_json({"error": "not found"}, 404)
@@ -126,6 +143,26 @@ def make_server(engine, config):
             if path.startswith("/api/stream/"):
                 ok = engine.remove_stream(path[len("/api/stream/"):])
                 return self.send_json({"ok": ok}, 200 if ok else 404)
+            if path.startswith("/api/receiver/"):
+                ok = engine.remove_receiver(path[len("/api/receiver/"):])
+                return self.send_json({"ok": ok}, 200 if ok else 404)
+            return self.send_json({"error": "not found"}, 404)
+
+        def do_PATCH(self):
+            path = self.path.split("?")[0].rstrip("/")
+            rx_prefix = "/x-nmos/connection/v1.1/single/receivers/"
+            if path.startswith(rx_prefix) and path.endswith("/staged"):
+                rid = path[len(rx_prefix):-len("/staged")]
+                if rid not in engine.receivers.receivers:
+                    return self.send_json({"error": "unknown receiver"}, 404)
+                try:
+                    body = json.loads(self.read_body() or b"{}")
+                    staged = engine.receivers.patch_staged(rid, body)
+                except ValueError as e:
+                    return self.send_json({"error": str(e)}, 400)
+                except Exception as e:
+                    return self.send_json({"error": str(e)}, 500)
+                return self.send_json(staged)
             return self.send_json({"error": "not found"}, 404)
 
         # ---- NMOS node + connection API ----
@@ -139,7 +176,7 @@ def make_server(engine, config):
             if path == "/x-nmos/node/v1.3/self":
                 return self.send_json(res["node"])
             if path == "/x-nmos/node/v1.3/devices":
-                return self.send_json([res["device"]])
+                return self.send_json(res["devices"])
             if path == "/x-nmos/node/v1.3/sources":
                 return self.send_json(res["sources"])
             if path == "/x-nmos/node/v1.3/flows":
@@ -147,10 +184,33 @@ def make_server(engine, config):
             if path == "/x-nmos/node/v1.3/senders":
                 return self.send_json(res["senders"])
             if path == "/x-nmos/node/v1.3/receivers":
-                return self.send_json([])
+                return self.send_json(res["receivers"])
 
+            if path == "/x-nmos/connection/v1.1/single":
+                return self.send_json(["senders/", "receivers/"])
             if path == "/x-nmos/connection/v1.1/single/senders":
                 return self.send_json([f"{s['id']}/" for s in res["senders"]])
+            if path == "/x-nmos/connection/v1.1/single/receivers":
+                return self.send_json([f"{rid}/" for rid in engine.receivers.receivers])
+
+            rx_prefix = "/x-nmos/connection/v1.1/single/receivers/"
+            if path.startswith(rx_prefix):
+                parts = path[len(rx_prefix):].split("/")
+                rid = parts[0]
+                sub = parts[1] if len(parts) > 1 else ""
+                if rid not in engine.receivers.receivers:
+                    return self.send_json({"error": "unknown receiver"}, 404)
+                if sub == "constraints":
+                    return self.send_json([{}])
+                if sub == "staged":
+                    return self.send_json(engine.receivers.staged(rid))
+                if sub == "active":
+                    return self.send_json(engine.receivers.active(rid))
+                if sub == "transporttype":
+                    return self.send_json("urn:x-nmos:transport:rtp.mcast")
+                if sub == "":
+                    return self.send_json(["constraints/", "staged/", "active/",
+                                           "transporttype/"])
 
             prefix = "/x-nmos/connection/v1.1/single/senders/"
             if path.startswith(prefix):

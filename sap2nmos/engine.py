@@ -8,6 +8,7 @@ from collections import deque
 
 import requests
 
+from .receivers import ReceiverManager
 from .sdp import parse_sdp, parse_sap, build_match_key, format_string
 
 HB_INTERVAL = 5
@@ -70,6 +71,9 @@ class Engine:
         self._threads = []
         self._node = None
         self._device = None
+        self._rx_device = None
+        self.receivers = ReceiverManager(config, self._log)
+        self._receivers_synced = False
         self._sources = {}
         self._flows = {}
         self._senders = {}
@@ -89,7 +93,9 @@ class Engine:
             self.running = True
         self._node = self._build_node()
         self._device = self._build_device()
+        self._rx_device = self._build_rx_device()
         self._node_registered = False
+        self._receivers_synced = False
         for sdp in self.config["manual_sdps"]:
             self._ingest(sdp, origin="manual")
         t1 = threading.Thread(target=self._sap_loop, daemon=True, name="sap")
@@ -97,6 +103,11 @@ class Engine:
         self._threads = [t1, t2]
         t1.start()
         t2.start()
+        if self.receivers.scan_available():
+            t3 = threading.Thread(target=self._device_scan_loop, daemon=True,
+                                  name="dantescan")
+            self._threads.append(t3)
+            t3.start()
         self._log("Engine started")
 
     def stop(self):
@@ -140,6 +151,7 @@ class Engine:
                 "streams": [
                     {k: v for k, v in s.items() if k != "sdp"} for s in streams
                 ],
+                "dante": self.receivers.as_api(),
                 "log": list(self.log),
             }
 
@@ -181,10 +193,12 @@ class Engine:
         with self.lock:
             return {
                 "node": self._node,
-                "device": self._device,
+                "devices": [self._device, self._rx_device],
                 "sources": list(self._sources.values()),
                 "flows": list(self._flows.values()),
                 "senders": list(self._senders.values()),
+                "receivers": [self._build_receiver(rx)
+                              for rx in self.receivers.receivers.values()],
             }
 
     def sender_sdp(self, sender_id):
@@ -405,10 +419,44 @@ class Engine:
             return True
         if not self._registrar():
             return False
-        if self._post("node", self._node) and self._post("device", self._device):
+        if self._post("node", self._node) and self._post("device", self._device) \
+                and self._post("device", self._rx_device):
             self._node_registered = True
+            self._sync_receivers()
             return True
         return False
+
+    def _sync_receivers(self):
+        """(Re-)register all configured Dante receivers with the registry."""
+        with self.lock:
+            receivers = list(self.receivers.receivers.values())
+            self._rx_device["receivers"] = [rx.nmos_id for rx in receivers]
+            self._rx_device["version"] = now_ts()
+        ok = True
+        for rx in receivers:
+            ok = self._post("receiver", self._build_receiver(rx)) and ok
+        ok = self._post("device", self._rx_device) and ok
+        self._receivers_synced = ok
+        return ok
+
+    def add_receiver(self, label, dante_device_ip, dante_base_channel, channels=2):
+        rx = self.receivers.add(label, dante_device_ip, dante_base_channel, channels)
+        if self._node_registered:
+            self._sync_receivers()
+        return rx
+
+    def remove_receiver(self, nmos_id):
+        rx = self.receivers.remove(nmos_id)
+        if not rx:
+            return False
+        if self._node_registered and self._registrar():
+            try:
+                requests.delete(f"{self._registrar()}/resource/receivers/{nmos_id}",
+                                timeout=2)
+            except requests.RequestException:
+                pass
+            self._sync_receivers()
+        return True
 
     def _find_existing_sender(self, sdp):
         key = build_match_key(parse_sdp(sdp))
@@ -538,6 +586,7 @@ class Engine:
         for rtype, items in zip(("source", "flow", "sender"), resources):
             for item in items:
                 self._post(rtype, item)
+        self._sync_receivers()
         return True
 
     def _cleanup_orphans(self):
@@ -550,20 +599,21 @@ class Engine:
         query = base.replace("registration", "query")
         with self.lock:
             known = {
-                "senders": set(self._senders),
-                "flows": set(self._flows),
-                "sources": set(self._sources),
+                "senders": (set(self._senders), self.config["device_id"]),
+                "flows": (set(self._flows), self.config["device_id"]),
+                "sources": (set(self._sources), self.config["device_id"]),
+                "receivers": (set(self.receivers.receivers),
+                              self.config["rx_device_id"]),
             }
-        for rtype in ("senders", "flows", "sources"):
+        for rtype, (known_ids, device_id) in known.items():
             try:
-                r = requests.get(f"{query}/{rtype}?device_id={self.config['device_id']}",
-                                 timeout=2)
+                r = requests.get(f"{query}/{rtype}?device_id={device_id}", timeout=2)
                 if r.status_code != 200:
                     continue
                 for item in r.json():
                     rid = item.get("id")
-                    if rid and rid not in known[rtype] \
-                            and item.get("device_id") == self.config["device_id"]:
+                    if rid and rid not in known_ids \
+                            and item.get("device_id") == device_id:
                         requests.delete(f"{base}/resource/{rtype}/{rid}", timeout=2)
                         self._log(f"Removed orphaned {rtype[:-1]} {rid[:8]}… from registry")
             except requests.RequestException:
@@ -633,6 +683,57 @@ class Engine:
                 "type": "urn:x-nmos:control:sr-ctrl/v1.1",
             }],
         }
+
+    def _build_rx_device(self):
+        ip = self._ip()
+        port = self.config["http_port"]
+        return {
+            "id": self.config["rx_device_id"],
+            "version": now_ts(),
+            "label": "Dante RX",
+            "description": "AES67 Dante devices exposed as NMOS receivers",
+            "tags": {},
+            "type": "urn:x-nmos:device:audio",
+            "node_id": self.config["node_id"],
+            "senders": [],
+            "receivers": [rx.nmos_id for rx in self.receivers.receivers.values()],
+            "controls": [{
+                "href": f"http://{ip}:{port}/x-nmos/connection/v1.1/",
+                "type": "urn:x-nmos:control:sr-ctrl/v1.1",
+            }],
+        }
+
+    def _build_receiver(self, rx):
+        return {
+            "id": rx.nmos_id,
+            "version": now_ts(),
+            "label": rx.label,
+            "description": f"{rx.channels}ch -> {rx.dante_device_ip} "
+                           f"ch{rx.dante_base_channel}",
+            "tags": {},
+            "device_id": self.config["rx_device_id"],
+            "transport": "urn:x-nmos:transport:rtp.mcast",
+            "format": "urn:x-nmos:format:audio",
+            "caps": {
+                "media_types": ["audio/L24", "audio/L16"],
+                "constraint_sets": [{
+                    "urn:x-nmos:cap:format:channel_count": {"enum": [rx.channels]},
+                    "urn:x-nmos:cap:format:sample_rate": {
+                        "enum": [{"numerator": 48000, "denominator": 1}]},
+                }],
+            },
+            "subscription": {"sender_id": None, "active": False},
+            "interface_bindings": ["eth0"],
+        }
+
+    def _device_scan_loop(self):
+        interval = max(10, int(self.config["device_scan_interval"]))
+        while self.running:
+            self.receivers.refresh_devices()
+            for _ in range(interval * 2):
+                if not self.running:
+                    return
+                time.sleep(0.5)
 
     def _build_source(self, sid, stream):
         parsed = parse_sdp(stream["sdp"])

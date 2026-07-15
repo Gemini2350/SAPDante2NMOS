@@ -3,47 +3,107 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SAP-2-NMOS</title>
+<title>Dante2NMOS</title>
 <link rel="stylesheet" href="/ui/style.css">
 </head>
 <body>
 <header>
   <div class="brand">
-    <h1>SAP-2-NMOS</h1>
-    <span class="subtitle">SAP discovery &rarr; NMOS registry</span>
+    <h1>Dante2NMOS</h1>
+    <span class="subtitle">SAP &rarr; NMOS senders &middot; NMOS &rarr; Dante receivers</span>
   </div>
   <div class="header-status">
     <span id="registry-chip" class="chip">registry</span>
     <span id="sap-chip" class="chip neutral" title="SAP packets received">SAP: 0</span>
+    <span id="apply-chip" class="chip warn" title="Whether real Dante commands are sent">DRY-RUN</span>
   </div>
   <div class="header-actions">
     <button id="btn-add" class="primary">+ Add SDP</button>
+    <button id="btn-add-rx" class="primary">+ Add Receiver</button>
     <button id="btn-settings">Settings</button>
     <button id="btn-toggle">Stop</button>
   </div>
 </header>
 
+<nav id="tabs">
+  <button class="tab active" data-tab="senders">Senders <span id="count-senders" class="count"></span></button>
+  <button class="tab" data-tab="receivers">Dante RX <span id="count-receivers" class="count"></span></button>
+  <button class="tab" data-tab="devices">Devices <span id="count-devices" class="count"></span></button>
+</nav>
+
 <main>
-  <table id="streams">
-    <thead>
-      <tr>
-        <th>Name</th>
-        <th>Multicast</th>
-        <th>Port</th>
-        <th>Format</th>
-        <th>Source IP</th>
-        <th>Origin</th>
-        <th>Status</th>
-        <th>Last seen</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody id="stream-rows"></tbody>
-  </table>
-  <div id="empty" class="empty" hidden>
-    No streams discovered yet. Listening for SAP announcements&hellip;<br>
-    <small>You can also add a stream manually with <b>+ Add SDP</b>.</small>
-  </div>
+  <!-- Senders (SAP) -->
+  <section id="tab-senders" class="tabpane">
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Multicast</th>
+          <th>Port</th>
+          <th>Format</th>
+          <th>Source IP</th>
+          <th>Origin</th>
+          <th>Status</th>
+          <th>Last seen</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="stream-rows"></tbody>
+    </table>
+    <div id="empty-senders" class="empty" hidden>
+      No streams discovered yet. Listening for SAP announcements&hellip;<br>
+      <small>You can also add a stream manually with <b>+ Add SDP</b>.</small>
+    </div>
+  </section>
+
+  <!-- Receivers (Dante RX) -->
+  <section id="tab-receivers" class="tabpane" hidden>
+    <table>
+      <thead>
+        <tr>
+          <th>Label</th>
+          <th>Dante device</th>
+          <th>Dante ch</th>
+          <th>Patch</th>
+          <th>Source</th>
+          <th>Last command</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="receiver-rows"></tbody>
+    </table>
+    <div id="empty-receivers" class="empty" hidden>
+      No receivers configured.<br>
+      <small>A receiver maps N channels of a Dante device to an NMOS receiver
+      that controllers can patch (<b>+ Add Receiver</b>).</small>
+    </div>
+  </section>
+
+  <!-- Dante devices -->
+  <section id="tab-devices" class="tabpane" hidden>
+    <div class="pane-toolbar">
+      <span id="devices-updated" class="note"></span>
+      <button id="btn-refresh-devices" class="icon">Rescan</button>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>IP</th>
+          <th>AES67</th>
+          <th>RX ch</th>
+          <th>TX ch</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="device-rows"></tbody>
+    </table>
+    <div id="empty-devices" class="empty" hidden>
+      No Dante devices found.<br>
+      <small>Device discovery needs the <code>netaudio</code> package and mDNS
+      access to the Dante network.</small>
+    </div>
+  </section>
 </main>
 
 <section id="log-panel">
@@ -66,6 +126,35 @@
     <div class="modal-actions">
       <button class="secondary" data-close>Cancel</button>
       <button class="primary" id="btn-add-confirm">Add stream</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add receiver modal -->
+<div class="modal-backdrop" id="modal-add-rx" hidden>
+  <div class="modal">
+    <h2>Add Dante receiver</h2>
+    <p class="hint">Maps channels of an AES67-enabled Dante device to an NMOS
+    receiver. Requirements on the device: AES67 mode on, 48 kHz, PTP locked.</p>
+    <label>Label
+      <input type="text" id="rx-label" placeholder="Dante RX 1-2">
+    </label>
+    <label>Dante device IP
+      <input type="text" id="rx-ip" list="device-ips" placeholder="192.168.97.101">
+      <datalist id="device-ips"></datalist>
+    </label>
+    <div class="grid2">
+      <label>First Dante RX channel
+        <input type="number" id="rx-base" value="1" min="1">
+      </label>
+      <label>Channel count
+        <input type="number" id="rx-channels" value="2" min="1" max="8">
+      </label>
+    </div>
+    <div class="error" id="add-rx-error"></div>
+    <div class="modal-actions">
+      <button class="secondary" data-close>Cancel</button>
+      <button class="primary" id="btn-add-rx-confirm">Add receiver</button>
     </div>
   </div>
 </div>
@@ -108,6 +197,10 @@
         <input type="number" id="cfg-httpport">
       </label>
     </div>
+    <label class="checkline danger">
+      <input type="checkbox" id="cfg-apply">
+      <b>ARMED:</b> send real Dante commands on IS-05 activation (default: DRY-RUN)
+    </label>
     <div class="error" id="settings-error"></div>
     <div class="modal-actions">
       <button class="secondary" data-close>Cancel</button>
@@ -116,7 +209,7 @@
   </div>
 </div>
 
-<!-- SDP viewer modal -->
+<!-- SDP / details viewer modal -->
 <div class="modal-backdrop" id="modal-sdp" hidden>
   <div class="modal">
     <h2 id="sdp-view-title">SDP</h2>

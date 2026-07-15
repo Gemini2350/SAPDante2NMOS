@@ -4,6 +4,17 @@ const $ = (id) => document.getElementById(id);
 
 let running = true;
 
+// ---------------------------------------------------------------- tabs
+
+document.querySelectorAll("#tabs .tab").forEach((btn) => {
+  btn.onclick = () => {
+    document.querySelectorAll("#tabs .tab").forEach((b) =>
+      b.classList.toggle("active", b === btn));
+    document.querySelectorAll(".tabpane").forEach((p) =>
+      (p.hidden = p.id !== "tab-" + btn.dataset.tab));
+  };
+});
+
 // ---------------------------------------------------------------- polling
 
 async function refresh() {
@@ -35,7 +46,20 @@ async function refresh() {
   }
   $("sap-chip").textContent = "SAP: " + state.sap_packets;
 
+  const dante = state.dante || { receivers: [], devices: [], apply_mode: false };
+  if (dante.apply_mode) {
+    setChip($("apply-chip"), "err", "ARMED");
+  } else {
+    setChip($("apply-chip"), "warn", "DRY-RUN");
+  }
+
+  $("count-senders").textContent = state.streams.length || "";
+  $("count-receivers").textContent = dante.receivers.length || "";
+  $("count-devices").textContent = dante.devices.length || "";
+
   renderStreams(state.streams);
+  renderReceivers(dante.receivers);
+  renderDevices(dante);
   $("log").textContent = state.log.slice().reverse().join("\n");
 }
 
@@ -44,11 +68,13 @@ function setChip(el, cls, text) {
   el.textContent = text;
 }
 
+// ---------------------------------------------------------------- senders
+
 let lastStreamsJson = "";
 
 function renderStreams(streams) {
   const tbody = $("stream-rows");
-  $("empty").hidden = streams.length > 0;
+  $("empty-senders").hidden = streams.length > 0;
 
   // Only rebuild the table when the data actually changed — a rebuild in the
   // middle of a click would swallow it. The "last seen" cells update below.
@@ -89,12 +115,92 @@ function renderStreams(streams) {
   }
 }
 
+// ---------------------------------------------------------------- receivers
+
+let lastReceiversJson = "";
+
+function renderReceivers(receivers) {
+  const tbody = $("receiver-rows");
+  $("empty-receivers").hidden = receivers.length > 0;
+
+  const json = JSON.stringify(receivers);
+  if (json === lastReceiversJson) return;
+  lastReceiversJson = json;
+  tbody.innerHTML = "";
+
+  for (const r of receivers) {
+    const tr = document.createElement("tr");
+    const chRange = r.channels > 1
+      ? `${r.dante_base_channel}–${r.dante_base_channel + r.channels - 1}`
+      : `${r.dante_base_channel}`;
+
+    let patch = r.active ? badge("reg", "active") : badge("pending", "idle");
+    let lastCmd = "";
+    if (r.last_result && r.last_result.length) {
+      if (r.last_ack === true) lastCmd = badge("reg", "ACK ok");
+      else if (r.last_ack === false) lastCmd = badge("stale", "NO ACK");
+      else lastCmd = badge("sap", "dry-run");
+      lastCmd += ` <button class="icon" data-rxdetail="${r.nmos_id}">details</button>`;
+    }
+
+    tr.innerHTML = `
+      <td class="name" title="${esc(r.label)}">${esc(r.label)}</td>
+      <td class="mono">${esc(r.dante_device_ip)}</td>
+      <td class="mono">${chRange} (${r.channels}ch)</td>
+      <td>${patch}</td>
+      <td class="mono">${esc(r.source)}</td>
+      <td>${lastCmd}</td>
+      <td>
+        <button class="icon" data-rxdel="${r.nmos_id}" title="Remove receiver">&#10005;</button>
+      </td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+// ---------------------------------------------------------------- devices
+
+let lastDevicesJson = "";
+
+function renderDevices(dante) {
+  const tbody = $("device-rows");
+  $("empty-devices").hidden = dante.devices.length > 0;
+  $("devices-updated").textContent = dante.devices_updated
+    ? "last scan: " + ago(dante.devices_updated) : "";
+
+  const json = JSON.stringify(dante.devices);
+  if (json === lastDevicesJson) return;
+  lastDevicesJson = json;
+  tbody.innerHTML = "";
+  const dl = $("device-ips");
+  dl.innerHTML = "";
+
+  for (const d of dante.devices) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="name">${esc(d.name)}</td>
+      <td class="mono">${esc(d.ip)}</td>
+      <td>${d.aes67_enabled ? badge("reg", "yes") : badge("stale", "no")}</td>
+      <td class="mono">${d.rx_channels}</td>
+      <td class="mono">${d.tx_channels}</td>
+      <td><button class="icon" data-mkrx="${esc(d.ip)}" data-mkname="${esc(d.name)}"
+        title="Create receiver for this device">+ RX</button></td>`;
+    tbody.appendChild(tr);
+
+    const opt = document.createElement("option");
+    opt.value = d.ip;
+    opt.label = d.name;
+    dl.appendChild(opt);
+  }
+}
+
+// ---------------------------------------------------------------- helpers
+
 function badge(cls, text) {
   return `<span class="badge ${cls}">${text}</span>`;
 }
 
 function esc(s) {
-  return (s || "").replace(/[&<>"]/g, (c) =>
+  return (s || "").toString().replace(/[&<>"]/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 }
 
@@ -152,6 +258,40 @@ $("btn-add-confirm").onclick = async () => {
   refresh();
 };
 
+// ---------------------------------------------------------------- add receiver
+
+function openAddReceiver(prefillIp, prefillName) {
+  $("rx-label").value = prefillName ? `${prefillName} RX 1-2` : "";
+  $("rx-ip").value = prefillIp || "";
+  $("rx-base").value = 1;
+  $("rx-channels").value = 2;
+  $("add-rx-error").textContent = "";
+  openModal("modal-add-rx");
+}
+
+$("btn-add-rx").onclick = () => openAddReceiver();
+
+$("btn-add-rx-confirm").onclick = async () => {
+  const body = {
+    label: $("rx-label").value.trim(),
+    dante_device_ip: $("rx-ip").value.trim(),
+    dante_base_channel: parseInt($("rx-base").value, 10) || 0,
+    channels: parseInt($("rx-channels").value, 10) || 2,
+  };
+  const r = await fetch("/api/receivers", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const res = await r.json();
+  if (!r.ok) {
+    $("add-rx-error").textContent = res.error || "Failed to add receiver.";
+    return;
+  }
+  closeModals();
+  refresh();
+};
+
 // ---------------------------------------------------------------- settings
 
 $("btn-settings").onclick = async () => {
@@ -173,6 +313,7 @@ $("btn-settings").onclick = async () => {
   $("cfg-dnsdomain").value = cfg.dns_sd_domain || "";
   $("cfg-dnsns").value = cfg.dns_sd_nameserver || "";
   $("cfg-autoreg").checked = !!cfg.auto_registrar;
+  $("cfg-apply").checked = !!cfg.apply_mode;
   $("discover-results").innerHTML = "";
   $("cfg-group").value = cfg.sap_group;
   $("cfg-sapport").value = cfg.sap_port;
@@ -192,6 +333,7 @@ $("btn-settings-save").onclick = async () => {
     sap_port: parseInt($("cfg-sapport").value, 10) || 9875,
     stream_timeout: parseInt($("cfg-timeout").value, 10) || 120,
     http_port: parseInt($("cfg-httpport").value, 10) || 8085,
+    apply_mode: $("cfg-apply").checked,
   };
   const r = await fetch("/api/config", {
     method: "POST",
@@ -238,6 +380,8 @@ $("btn-discover").onclick = async () => {
 
 // ---------------------------------------------------------------- table actions
 
+let lastState = null;
+
 $("stream-rows").addEventListener("click", async (e) => {
   const btn = e.target.closest("button");
   if (!btn) return;
@@ -245,6 +389,7 @@ $("stream-rows").addEventListener("click", async (e) => {
   if (btn.dataset.sdp) {
     const r = await fetch("/api/sdp/" + btn.dataset.sdp);
     if (!r.ok) return;
+    $("sdp-view-title").textContent = "SDP";
     $("sdp-view").textContent = await r.text();
     openModal("modal-sdp");
   }
@@ -255,6 +400,45 @@ $("stream-rows").addEventListener("click", async (e) => {
     refresh();
   }
 });
+
+$("receiver-rows").addEventListener("click", async (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+
+  if (btn.dataset.rxdel) {
+    if (!confirm("Remove this receiver (and unregister it from the registry)?")) return;
+    await fetch("/api/receiver/" + btn.dataset.rxdel, { method: "DELETE" });
+    refresh();
+  }
+
+  if (btn.dataset.rxdetail) {
+    const state = await (await fetch("/api/state")).json();
+    const rx = (state.dante.receivers || []).find(
+      (r) => r.nmos_id === btn.dataset.rxdetail);
+    if (!rx) return;
+    const lines = (rx.last_result || []).map((s) => {
+      let l = s.step;
+      if ("ack" in s) l += `   ack=${s.ack}`;
+      l += "\n  " + s.hex;
+      if (s.response) l += "\n  resp: " + s.response;
+      return l;
+    });
+    $("sdp-view-title").textContent = `Last Dante commands — ${rx.label}`;
+    $("sdp-view").textContent = lines.join("\n\n") || "(none)";
+    openModal("modal-sdp");
+  }
+});
+
+$("device-rows").addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (btn && btn.dataset.mkrx) {
+    openAddReceiver(btn.dataset.mkrx, btn.dataset.mkname);
+  }
+});
+
+$("btn-refresh-devices").onclick = async () => {
+  await fetch("/api/devices/refresh", { method: "POST" });
+};
 
 $("btn-copy-sdp").onclick = () => {
   navigator.clipboard.writeText($("sdp-view").textContent);
