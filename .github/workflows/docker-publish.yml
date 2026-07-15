@@ -1,7 +1,7 @@
 # Build + push the SAP-2-NMOS Docker image to Docker Hub.
 #
 # Triggers:
-#   - every push to main        → :latest, :<version from sap2nmos/__init__.py>, :main-<sha>
+#   - every push to main        → :latest, :<version from dante2nmos/__init__.py>, :main-<sha>
 #   - git tag `v*`              → :<tag-without-leading-v>, :latest
 #   - manual workflow_dispatch  → same as push
 #
@@ -12,7 +12,7 @@
 #
 # Hardcoded — change here if you ever rename the Docker Hub repo:
 #   - Username  : gemini2350
-#   - Image repo: gemini2350/sap2nmos
+#   - Image repo: gemini2350/dante2nmos
 
 name: Docker
 
@@ -48,10 +48,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Extract version from sap2nmos/__init__.py
+      - name: Extract version from dante2nmos/__init__.py
         id: version
         run: |
-          v=$(sed -n 's/__version__ = "\(.*\)"/\1/p' sap2nmos/__init__.py)
+          v=$(sed -n 's/__version__ = "\(.*\)"/\1/p' dante2nmos/__init__.py)
           echo "version=$v" >> "$GITHUB_OUTPUT"
           echo "Image version: $v"
 
@@ -73,7 +73,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: gemini2350/sap2nmos
+          images: gemini2350/dante2nmos
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value=${{ steps.version.outputs.version }},enable={{is_default_branch}}

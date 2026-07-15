@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""SAP-2-NMOS desktop app entry point."""
+"""Dante2NMOS desktop app entry point."""
 
 import argparse
 import threading
 import time
 
-from sap2nmos.config import Config
-from sap2nmos.engine import Engine
-from sap2nmos.httpd import make_server
+from dante2nmos.config import Config
+from dante2nmos.engine import Engine
+from dante2nmos.httpd import make_server
 
 
 def main():
-    parser = argparse.ArgumentParser(description="SAP to NMOS gateway")
+    parser = argparse.ArgumentParser(description="Dante2NMOS: SAP-to-NMOS senders + NMOS-to-Dante receivers")
     parser.add_argument("--registrar", help="NMOS Registration API URL (overrides saved config)")
     parser.add_argument("--headless", action="store_true", help="run without a window")
     parser.add_argument("--browser", action="store_true", help="open in the default browser instead of a native window")
@@ -29,7 +29,7 @@ def main():
     server = make_server(engine, config)
     threading.Thread(target=server.serve_forever, daemon=True).start()
 
-    from sap2nmos.is12 import Is12Server
+    from dante2nmos.is12 import Is12Server
     is12 = Is12Server(engine, config)
     is12.start()
 
@@ -56,7 +56,7 @@ def main():
                 webbrowser.open(url)
                 while True:
                     time.sleep(1)
-            webview.create_window("SAP-2-NMOS", url, width=1100, height=720,
+            webview.create_window("Dante2NMOS", url, width=1100, height=720,
                                   min_size=(760, 480))
             webview.start()
     except KeyboardInterrupt:

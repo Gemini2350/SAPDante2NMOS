@@ -1,31 +1,38 @@
-# SAP2NMOS
+# Dante2NMOS
 
-[![Docker](https://github.com/Gemini2350/SAP2NMOS/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/Gemini2350/SAP2NMOS/actions/workflows/docker-publish.yml)
-[![Docker Hub](https://img.shields.io/docker/v/gemini2350/sap2nmos?label=docker%20hub)](https://hub.docker.com/r/gemini2350/sap2nmos)
+[![Docker](https://github.com/Gemini2350/Dante2NMOS/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/Gemini2350/Dante2NMOS/actions/workflows/docker-publish.yml)
+[![Docker Hub](https://img.shields.io/docker/v/gemini2350/dante2nmos?label=docker%20hub)](https://hub.docker.com/r/gemini2350/dante2nmos)
 
-Desktop tool (Windows / macOS) that listens to **SAP/SDP announcements** (AES67 style,
-239.255.255.255:9875) and registers the discovered streams as **senders in an NMOS IS-04
-registry** — including a GUI that shows every discovered stream and lets you add streams
-manually by pasting an SDP.
+Bidirectional Dante/AES67 ↔ NMOS gateway with a GUI (desktop app for Windows/macOS or
+Docker container):
+
+- **Sender side (SAP → NMOS):** listens to SAP/SDP announcements
+  (239.255.255.255:9875) and registers the discovered streams as senders in an NMOS
+  IS-04 registry; manual SDP entry included.
+- **Receiver side (NMOS → Dante):** exposes AES67-enabled Dante devices as NMOS
+  receivers and turns IS-05 patches into Dante control commands — with BCP-008-01
+  receiver monitoring over IS-12 so controllers see whether the patch worked.
 
 ## Quick start (Docker, Linux host)
 
 ```sh
-docker run -d --name sap2nmos \
+docker run -d --name dante2nmos \
   --network host --restart always \
-  -v sap2nmos-config:/config \
-  gemini2350/sap2nmos:latest
+  -v dante2nmos-config:/config \
+  gemini2350/dante2nmos:latest
 ```
 
 Open the UI at `http://<host>:8085/ui/` — the NMOS registry is found automatically via
 unicast DNS-SD; discovered SAP streams appear in the table and get registered. To update:
 
 ```sh
-docker pull gemini2350/sap2nmos:latest && docker rm -f sap2nmos
+docker pull gemini2350/dante2nmos:latest && docker rm -f dante2nmos
 # then re-run the docker run command above
 ```
 
 ## Features
+
+### Sender side (SAP → NMOS)
 
 - Live table of all SAP-discovered streams: name, multicast address, port, format
   (bit depth / sample rate / channels), source IP, registration status
@@ -81,14 +88,14 @@ Options:
 ```
 
 The registrar can also be set in the GUI under **Settings**. Configuration is stored in
-`~/Library/Application Support/SAP-2-NMOS/` (macOS) or `%APPDATA%\SAP-2-NMOS\` (Windows).
+`~/Library/Application Support/Dante2NMOS/` (macOS) or `%APPDATA%\Dante2NMOS\` (Windows).
 
 ## Build a standalone app
 
 ```sh
 pip install pyinstaller
-./build-macos.sh        # -> dist/SAP-2-NMOS.app
-build-windows.bat       # -> dist\SAP-2-NMOS\SAP-2-NMOS.exe  (run on Windows)
+./build-macos.sh        # -> dist/Dante2NMOS.app
+build-windows.bat       # -> dist\Dante2NMOS\Dante2NMOS.exe  (run on Windows)
 ```
 
 ## Linux (Ubuntu)
@@ -106,7 +113,7 @@ For a native window install the WebKit2GTK bindings first
 
 ## Docker
 
-CI publishes `gemini2350/sap2nmos` (amd64 + arm64) to Docker Hub on every push to main:
+CI publishes `gemini2350/dante2nmos` (amd64 + arm64) to Docker Hub on every push to main:
 
 ```sh
 docker compose pull && docker compose up -d    # use the CI image
@@ -118,7 +125,7 @@ The container runs headless; the web UI works from any browser. **Host networkin
 required** (already set in `docker-compose.yml`): the SAP listener needs the host's
 multicast traffic and the announced manifest URLs must carry a reachable IP. This only
 works on Linux hosts — Docker Desktop on macOS/Windows isolates the host network.
-Configuration (node IDs, manual SDPs, settings) persists in the `sap2nmos-config` volume.
+Configuration (node IDs, manual SDPs, settings) persists in the `dante2nmos-config` volume.
 
 ## Legacy CLI
 

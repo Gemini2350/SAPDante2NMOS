@@ -11,7 +11,7 @@ from .engine import list_interfaces
 def ui_dir():
     base = getattr(sys, "_MEIPASS", None)
     if base:
-        return os.path.join(base, "sap2nmos", "ui")
+        return os.path.join(base, "dante2nmos", "ui")
     return os.path.join(os.path.dirname(__file__), "ui")
 
 

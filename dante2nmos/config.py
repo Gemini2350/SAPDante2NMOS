@@ -31,7 +31,16 @@ def config_dir():
         base = os.environ.get("APPDATA", os.path.expanduser("~"))
     else:
         base = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
-    return os.path.join(base, "SAP-2-NMOS")
+    new = os.path.join(base, "Dante2NMOS")
+    old = os.path.join(base, "SAP-2-NMOS")
+    # One-time migration from the pre-rename config location: the node and
+    # device IDs must survive, otherwise the registry fills with orphans.
+    if not os.path.isdir(new) and os.path.isdir(old):
+        try:
+            os.rename(old, new)
+        except OSError:
+            return old
+    return new
 
 
 def config_path():

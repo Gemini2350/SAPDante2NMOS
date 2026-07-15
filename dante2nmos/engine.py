@@ -651,11 +651,11 @@ class Engine:
         return {
             "id": self.config["node_id"],
             "version": now_ts(),
-            "label": "SAP-2-NMOS",
-            "description": "SAP to NMOS gateway",
+            "label": "Dante2NMOS",
+            "description": "SAP-to-NMOS senders + NMOS-to-Dante receivers",
             "tags": {},
             "href": f"http://{ip}:{port}/x-nmos/node/v1.3/",
-            "hostname": socket.gethostname().split(".")[0] or "sap-2-nmos",
+            "hostname": socket.gethostname().split(".")[0] or "dante2nmos",
             "api": {
                 "versions": ["v1.3"],
                 "endpoints": [{"host": ip, "port": port, "protocol": "http"}],
@@ -676,7 +676,7 @@ class Engine:
         return {
             "id": self.config["device_id"],
             "version": now_ts(),
-            "label": "SAP-2-NMOS",
+            "label": "SAP Senders",
             "description": "SAP discovered streams",
             "tags": {},
             "type": "urn:x-nmos:device:generic",
