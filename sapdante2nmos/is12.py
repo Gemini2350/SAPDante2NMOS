@@ -265,7 +265,7 @@ class Is12Server:
         key = (level, index)
         if oid == 1:
             root = {(1, 1): CID_BLOCK, (1, 2): 1, (1, 3): True, (1, 4): None,
-                    (1, 5): "root", (1, 6): "Dante2NMOS", (1, 7): None,
+                    (1, 5): "root", (1, 6): "SAPDante2NMOS", (1, 7): None,
                     (1, 8): None, (2, 1): self._root_members()}
             return root.get(key, KeyError)
         if oid == 2:
@@ -274,10 +274,10 @@ class Is12Server:
                   (1, 6): "Device Manager", (1, 7): None, (1, 8): None,
                   (3, 1): "v1.0",
                   (3, 2): {"name": "Gemini2350"},
-                  (3, 3): {"name": "Dante2NMOS", "key": "dante2nmos",
+                  (3, 3): {"name": "SAPDante2NMOS", "key": "sapdante2nmos",
                            "revisionLevel": "1.0.0"},
                   (3, 4): self.config["node_id"][:13],
-                  (3, 5): None, (3, 6): "Dante2NMOS", (3, 7): None,
+                  (3, 5): None, (3, 6): "SAPDante2NMOS", (3, 7): None,
                   (3, 8): {"generic": 0, "detail": None}, (3, 9): 0}
             return dm.get(key, KeyError)
         if oid == 3:

@@ -651,11 +651,11 @@ class Engine:
         return {
             "id": self.config["node_id"],
             "version": now_ts(),
-            "label": "Dante2NMOS",
+            "label": "SAPDante2NMOS",
             "description": "SAP-to-NMOS senders + NMOS-to-Dante receivers",
             "tags": {},
             "href": f"http://{ip}:{port}/x-nmos/node/v1.3/",
-            "hostname": socket.gethostname().split(".")[0] or "dante2nmos",
+            "hostname": socket.gethostname().split(".")[0] or "sapdante2nmos",
             "api": {
                 "versions": ["v1.3"],
                 "endpoints": [{"host": ip, "port": port, "protocol": "http"}],

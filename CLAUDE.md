@@ -1,22 +1,22 @@
-# CLAUDE.md — Dante2NMOS
+# CLAUDE.md — SAPDante2NMOS
 
 Bidirektionales Dante/AES67 ↔ NMOS Gateway. Entstanden aus dem Merge von SAP2NMOS
-(Sender-Seite) und dem Dante2NMOS-RX-Projekt (Receiver-Seite, Reverse Engineering).
+(Sender-Seite) und dem SAPDante2NMOS-RX-Projekt (Receiver-Seite, Reverse Engineering).
 
 ## Architektur
 
 Ein Prozess, ein NMOS-Node, zwei Devices ("SAP Senders" + "Dante RX"):
 
-- `dante2nmos/engine.py` — Kern: SAP-Listener, IS-04-Registrierung (persistente IDs,
+- `sapdante2nmos/engine.py` — Kern: SAP-Listener, IS-04-Registrierung (persistente IDs,
   Orphan-Cleanup, Heartbeat), Registry-Auto-Discovery, Receiver-Sync
-- `dante2nmos/receivers.py` — ReceiverManager: Dante-Receiver-Mappings (Config-basiert),
+- `sapdante2nmos/receivers.py` — ReceiverManager: Dante-Receiver-Mappings (Config-basiert),
   IS-05-State, Aktivierung → Übersetzung → optional senden
-- `dante2nmos/dante.py` — reverse-engineerte Kommando-Builder (Template-and-Patch)
-- `dante2nmos/translate.py` / `dante_sdp.py` — SDP → Dante (1 Receiver = N Kanäle)
-- `dante2nmos/is12.py` — IS-12/BCP-008-01: NcReceiverMonitor je Receiver (ws :8086)
-- `dante2nmos/httpd.py` — Node-API, IS-05 (Sender + Receiver), UI, JSON-API
-- `dante2nmos/discovery.py` — Registry via Unicast-DNS-SD (Default an)
-- `dante2nmos/dante_devices.py` — AES67-Geräte-Scan (netaudio, optional)
+- `sapdante2nmos/dante.py` — reverse-engineerte Kommando-Builder (Template-and-Patch)
+- `sapdante2nmos/translate.py` / `dante_sdp.py` — SDP → Dante (1 Receiver = N Kanäle)
+- `sapdante2nmos/is12.py` — IS-12/BCP-008-01: NcReceiverMonitor je Receiver (ws :8086)
+- `sapdante2nmos/httpd.py` — Node-API, IS-05 (Sender + Receiver), UI, JSON-API
+- `sapdante2nmos/discovery.py` — Registry via Unicast-DNS-SD (Default an)
+- `sapdante2nmos/dante_devices.py` — AES67-Geräte-Scan (netaudio, optional)
 - `tests/test_translation.py` — Offline-Tests gegen die Capture-Werte (CI-Gate)
 
 ## Das reverse-engineerte Dante-Protokoll (Kern-Wissen)
@@ -49,14 +49,14 @@ vollständige Analyse in `docs/dante-protocol-reverse-engineering.md`.
   Settings). Ohne bestätigtes `0x3410`-Zielfeld nicht produktiv scharf schalten.
 - Docker braucht `network_mode: host` (SAP-Multicast, mDNS, erreichbare Manifest-IPs).
 - Config (Node-IDs! manuelle SDPs, Receiver) liegt im OS-Config-Verzeichnis
-  `Dante2NMOS/` und migriert automatisch vom alten `SAP-2-NMOS/`-Pfad.
+  `SAPDante2NMOS/` und migriert automatisch vom alten `SAP-2-NMOS/`-Pfad.
 
 ## Befehle
 
 ```bash
 .venv/bin/python -m pytest -q        # Offline-Tests
 .venv/bin/python app.py              # Desktop (pywebview); --headless / --browser
-docker compose up -d --build         # Container; Image: gemini2350/dante2nmos
+docker compose up -d --build         # Container; Image: gemini2350/sapdante2nmos
 ```
 
 CI (`.github/workflows/docker-publish.yml`): pytest-Gate, dann Multi-Arch-Build
