@@ -134,3 +134,24 @@ Um die Feld-Semantik zu bestätigen, jeweils **eine Variable ändern** und mitsc
 
 Schick die neuen `.pcapng` — ich diffe sie und baue daraus den bestätigten
 Python-Kommando-Builder für `0x3201` (analog `build_create_tx_flow`).
+
+## AES67 Multicast Prefix (per Gerät) — bestätigt via prefix_l.pcap (2026-07-16)
+
+Der AES67-Multicast-Bereich eines Geräts ist `239.<prefix>.x.x`. Aus einem
+Dante-Controller-Mitschnitt (Prefix 69 → 99 → 69):
+
+**Schreiben — Opcode `0x1101` (20 B):**
+```
+2809 0014 <txid> 1101 0000 0101 8060 0010 ef PP 0000
+                                              └ @17 = Prefix (0x45=69, 0x63=99); @16=0xEF (239)
+```
+Antwort (RESP) spiegelt das Paket mit @9: 00→01.
+
+**Lesen — Opcode `0x1100` Info-Query:**
+Request `2809003e00df1100…00660214` (62 B). Die Antwort endet auf
+`… ef PP 00 00 00 1e 84 80`; der Prefix ist das Byte bei `len-7`, abgesichert
+über `resp[-8]==0xEF` und Trailer `resp[-3:]==1e8480`. Getestet für
+Antwortlängen 148 und 156.
+
+Builder/Parser: `dante.build_set_aes67_prefix`, `read_aes67_prefix`,
+`set_aes67_prefix`, `parse_aes67_prefix`. Schreiben ist hinter ARMED gated.
