@@ -21,8 +21,10 @@ class ReceiverMap:
     nmos_id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
 
-def translate(rx: ReceiverMap, sdp: SdpParams, apply: bool = False):
+def translate(rx: ReceiverMap, sdp: SdpParams, send: bool = False):
     """Baut (und sendet optional) die Dante-Kommandos fuer eine Verbindung.
+
+    `send=False` baut die Pakete nur (fuer Tests); `send=True` schickt sie live.
 
     Je Kanal: ein 0x3410-Bind auf den Ziel-Dante-RX-Kanal (dante_base_channel+i)
     PLUS ein 0x3201-Mapping (Quell-Stream-Kanal i+1 -> selber Ziel-Kanal). Dante
@@ -48,7 +50,7 @@ def translate(rx: ReceiverMap, sdp: SdpParams, apply: bool = False):
     out = []
     for label, pkt in packets:
         e = {"step": label, "hex": pkt.hex()}
-        if apply:
+        if send:
             resp = dante.send(rx.dante_device_ip, pkt)
             e["response"] = resp.hex() if resp else None
             e["ack"] = bool(resp and resp[6:8].hex() in ("3201", "3410", "2801"))

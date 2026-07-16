@@ -42,8 +42,8 @@ vollständige Analyse in `docs/dante-protocol-reverse-engineering.md`.
   4-/8-Kanal-Empfängern Capture nachliefern.
 - **BCP-008 streamStatus** kommt aus dem Dante-RTP-Flow-Monitor (Subscription-
   Status-Code je RX-Kanal, via netaudio gepollt). Kalibriert an echten Geräten:
-  **10 = Audio (grün), 14 = kein Audio (rot), 0 = keine Subscription**. Läuft auch
-  im DRY-RUN (echter Gerätestatus). connectionStatus kommt weiter aus den ACKs.
+  **10 = Audio (grün), 14 = kein Audio (rot), 0 = keine Subscription**.
+  connectionStatus kommt weiter aus den ACKs.
 - **sender_id-Feedback**: Bei IS-05-Aktivierung wird `subscription.sender_id/active`
   gesetzt und der Receiver re-registriert (Controller sieht den verbundenen Sender).
 

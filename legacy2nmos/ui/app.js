@@ -210,7 +210,7 @@ function receiverRow(r) {
   if (r.last_result && r.last_result.length) {
     if (r.last_ack === true) lastCmd = badge("reg", "ACK ok");
     else if (r.last_ack === false) lastCmd = badge("stale", "NO ACK");
-    else lastCmd = badge("sap", "dry-run");
+    else lastCmd = badge("sap", "sent");
     lastCmd += ` <button class="icon" data-rxdetail="${r.nmos_id}">details</button>`;
   }
   return `<tr>

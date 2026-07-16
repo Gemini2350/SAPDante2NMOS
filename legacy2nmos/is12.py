@@ -73,8 +73,7 @@ def _monitor_status(rx_state):
         connection = (UNHEALTHY, "Dante device did not acknowledge commands")
 
     # streamStatus comes from the Dante RTP flow monitor (subscription status
-    # polled per RX channel), independent of dry-run/apply — a real "no audio"
-    # on the device must show red even before we send commands.
+    # polled per RX channel) — a real "no audio" on the device shows red.
     health = rx_state.get("stream_health", "unknown")
     stream = {
         "connected": (HEALTHY, "RTP flow receiving audio"),

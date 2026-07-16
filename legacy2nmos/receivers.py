@@ -30,7 +30,7 @@ def _fresh_state():
         "active": empty_staged(),
         "summary": {"active": False, "source": "", "sender_id": None},
         "last_result": [],       # translate() steps of the last activation
-        "last_ack": None,        # True/False after --apply, None in DRY-RUN
+        "last_ack": None,        # True/False: did the device ACK the commands
         "last_activation": 0,
         "stream_health": "none",  # 'connected' | 'no_audio' | 'none'
     }
@@ -115,8 +115,8 @@ class ReceiverManager:
     def patch_staged(self, nmos_id, body):
         """Apply an IS-05 PATCH; activate immediately if requested.
 
-        Returns the staged state. Activation runs the SDP -> Dante translation;
-        commands are only sent when apply_mode is on.
+        Returns the staged state. Activation runs the SDP -> Dante translation
+        and sends the commands to the device (always live).
         """
         rx = self.receivers[nmos_id]
         with self.lock:
@@ -154,7 +154,7 @@ class ReceiverManager:
         # The Dante device only receives an AES67 multicast whose prefix matches
         # its configured AES67 range — so align the prefix BEFORE the mapping.
         self._sync_prefix(rx, sdp.multicast_ip)
-        steps = translate(rx, sdp, apply=True)
+        steps = translate(rx, sdp, send=True)
         acks = [s.get("ack") for s in steps if "ack" in s]
         with self.lock:
             state = self.state[rx.nmos_id]
