@@ -154,7 +154,7 @@ Request `2809003e00df1100…00660214` (62 B). Die Antwort endet auf
 Antwortlängen 148 und 156.
 
 Builder/Parser: `dante.build_set_aes67_prefix`, `read_aes67_prefix`,
-`set_aes67_prefix`, `parse_aes67_prefix`. Schreiben ist hinter ARMED gated.
+`set_aes67_prefix`, `parse_aes67_prefix`. Schreiben geht direkt aufs Geraet (immer live).
 
 ## AES67 Multicast TX Flow anlegen — bestätigt via tx_ch.pcap (2026-07-16)
 

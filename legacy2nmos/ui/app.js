@@ -502,7 +502,7 @@ async function handleAction(e) {
     refresh();
   } else if (d.prefix) {
     const val = prompt(`AES67 multicast prefix for ${d.prefix}\n` +
-      `Address range becomes 239.<prefix>.x.x (0–255).\nWriting requires ARMED mode.`,
+      `Address range becomes 239.<prefix>.x.x (0–255).\nWrites to the device immediately.`,
       d.pfxval);
     if (val === null) return;
     const prefix = parseInt(val, 10);

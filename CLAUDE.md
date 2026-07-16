@@ -52,15 +52,16 @@ vollständige Analyse in `docs/dante-protocol-reverse-engineering.md`.
 1. **`0x3410`-Bind**: In Dante3.pcapng nicht enthalten (nur 0x3400-Queries). Rolle
    weiter offen; wir senden ihn wie in der funktionierenden ch1-Sequenz. `@20:22`
    (Zielkanal) bleibt Hypothese.
-2. **Live-Test mit ARMED** nur gegen ein TESTGERÄT (AES67 an, 48 kHz, PTP gelockt).
+2. **Live-Test** nur gegen ein TESTGERÄT (AES67 an, 48 kHz, PTP gelockt).
 3. **Sync-Domain (PTP)** noch NotUsed — PTP-Lock über netaudio ergänzen.
 4. **`@52:54` für Ziel-Kanäle >2** verifizieren (Capture mit 4/8 Kanälen).
 5. Unklare Felder: `0x3201 @16` (`4202`) und `@76` (`0x1E240`) — bleiben Template.
 
 ## Sicherheit / Betrieb
 
-- **DRY-RUN ist Default** (`apply_mode` in der Config bzw. ARMED-Checkbox in den
-  Settings). Ohne bestätigtes `0x3410`-Zielfeld nicht produktiv scharf schalten.
+- Das Gateway arbeitet **immer live**: eine IS-05-Schaltung sendet die Dante-Kommandos
+  direkt und setzt den AES67-Prefix passend zur Multicast. Teile des Empfangspfads
+  sind noch reverse-engineert — nur gegen Testgeräte verifizieren.
 - Docker braucht `network_mode: host` (SAP-Multicast, mDNS, erreichbare Manifest-IPs).
 - Config (Node-IDs! manuelle SDPs, Receiver) liegt im OS-Config-Verzeichnis
   `Legacy2NMOS/` und migriert automatisch von den alten Pfaden (SAPDante2NMOS/Dante2NMOS/SAP-2-NMOS).
