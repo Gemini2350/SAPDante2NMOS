@@ -21,6 +21,8 @@ DEFAULTS = {
     "apply_mode": False,
     "ncp_port": 8086,
     "device_scan_interval": 60,
+    "auto_prefix_devices": [],   # device IPs that auto-follow the patched multicast
+    "registry_recheck_interval": 300,  # re-check SAP streams vs registry (s)
 }
 
 

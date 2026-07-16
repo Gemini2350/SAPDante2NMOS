@@ -105,7 +105,8 @@ def make_server(engine, config):
                     allowed = ("registrar", "auto_registrar", "dns_sd_domain",
                                "dns_sd_nameserver", "interface_ip", "sap_group",
                                "sap_port", "stream_timeout", "http_port",
-                               "apply_mode", "device_scan_interval")
+                               "apply_mode", "device_scan_interval",
+                               "registry_recheck_interval")
                     for key in allowed:
                         if key in body:
                             config[key] = body[key]
@@ -141,6 +142,11 @@ def make_server(engine, config):
                     ok, msg = engine.set_device_prefix(ip, prefix)
                     return self.send_json({"ok": ok, "message": msg},
                                           200 if ok else 400)
+                if path == "/api/devices/auto_prefix":
+                    body = json.loads(self.read_body() or b"{}")
+                    engine.receivers.set_auto_prefix((body.get("ip") or "").strip(),
+                                                     bool(body.get("enabled")))
+                    return self.send_json({"ok": True})
             except ValueError as e:
                 return self.send_json({"error": str(e)}, 400)
             return self.send_json({"error": "not found"}, 404)

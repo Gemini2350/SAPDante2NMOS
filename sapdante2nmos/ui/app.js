@@ -194,11 +194,15 @@ function renderDevices(dante) {
   for (const d of dante.devices) {
     const tr = document.createElement("tr");
     const rate = d.sample_rate ? (d.sample_rate / 1000) + " kHz" : "";
+    const autoBtn = `<button class="icon ${d.auto_prefix ? "on" : ""}"
+        data-autopfx="${esc(d.ip)}" data-autoval="${d.auto_prefix ? 1 : 0}"
+        title="Auto: follow the patched multicast's prefix on NMOS connect">
+        Auto${d.auto_prefix ? " ✓" : ""}</button>`;
     const prefix = d.mcast_prefix
       ? `<span class="mono">239.${d.mcast_prefix}.x.x</span>
          <button class="icon" data-prefix="${esc(d.ip)}" data-pfxval="${d.mcast_prefix}"
-           title="Set AES67 multicast prefix">edit</button>`
-      : "—";
+           title="Set AES67 multicast prefix">edit</button> ${autoBtn}`
+      : autoBtn;
     tr.innerHTML = `
       <td class="name">${esc(d.name)}</td>
       <td class="mono">${esc(d.ip)}</td>
@@ -345,6 +349,7 @@ $("btn-settings").onclick = async () => {
   $("cfg-sapport").value = cfg.sap_port;
   $("cfg-timeout").value = cfg.stream_timeout;
   $("cfg-httpport").value = cfg.http_port;
+  $("cfg-recheck").value = cfg.registry_recheck_interval;
   openModal("modal-settings");
 };
 
@@ -360,6 +365,7 @@ $("btn-settings-save").onclick = async () => {
     stream_timeout: parseInt($("cfg-timeout").value, 10) || 120,
     http_port: parseInt($("cfg-httpport").value, 10) || 8085,
     apply_mode: $("cfg-apply").checked,
+    registry_recheck_interval: parseInt($("cfg-recheck").value, 10) || 300,
   };
   const r = await fetch("/api/config", {
     method: "POST",
@@ -460,6 +466,15 @@ $("device-rows").addEventListener("click", async (e) => {
   if (!btn) return;
   if (btn.dataset.mkrx) {
     openAddReceiver(btn.dataset.mkrx, btn.dataset.mkname);
+  }
+  if (btn.dataset.autopfx) {
+    await fetch("/api/devices/auto_prefix", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ip: btn.dataset.autopfx, enabled: btn.dataset.autoval !== "1" }),
+    });
+    refresh();
+    return;
   }
   if (btn.dataset.prefix) {
     const cur = btn.dataset.pfxval;

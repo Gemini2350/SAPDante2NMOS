@@ -84,6 +84,7 @@ class Engine:
         self._query_cache = {}
         self._query_cache_ts = 0
         self._last_discovery = 0
+        self._last_recheck = 0
 
     # ------------------------------------------------------------------
     # lifecycle
@@ -544,11 +545,45 @@ class Engine:
             if self._registrar():
                 self._heartbeat()
                 self._retry_pending()
+                self._recheck_registry()
             self._expire_streams()
             for _ in range(HB_INTERVAL * 2):
                 if not self.running:
                     return
                 time.sleep(0.5)
+
+    def _recheck_registry(self):
+        """Periodically check whether streams we registered ourselves have
+        meanwhile appeared natively in the registry (device gained NMOS). If so,
+        step back: unregister our duplicate and defer to the real sender."""
+        interval = int(self.config["registry_recheck_interval"])
+        if interval <= 0:
+            return
+        now = time.time()
+        if now - self._last_recheck < interval:
+            return
+        self._last_recheck = now
+        with self.lock:
+            owned = [s for s in self.streams.values()
+                     if s["registered"] and not s["external"]]
+        if not owned:
+            return
+        self._query_cache_ts = 0  # force a fresh registry read
+        for stream in owned:
+            try:
+                existing = self._find_existing_sender(stream["sdp"])
+            except requests.RequestException:
+                return
+            if existing and existing["id"] != stream["sender_id"]:
+                self._log(f"Stream now native in registry: "
+                          f"{stream['name'] or stream['mcast']} -> deferring to "
+                          f"{existing['id'][:8]}…, removing our duplicate")
+                self._unregister_stream(stream)
+                with self.lock:
+                    stream["external"] = True
+                    stream["sender_id"] = existing["id"]
+                    stream["source_id"] = None
+                    stream["flow_id"] = None
 
     def _auto_discover(self):
         """Find the registry via unicast DNS-SD when none is reachable."""

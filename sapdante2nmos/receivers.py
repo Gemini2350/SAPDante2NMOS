@@ -164,6 +164,7 @@ class ReceiverManager:
             state["summary"] = {
                 "active": True,
                 "sender_id": st.get("sender_id"),
+                "mcast": sdp.multicast_ip,
                 "source": f"{sdp.source_ip} -> {sdp.multicast_ip}:{sdp.port} "
                           f"({sdp.channels}ch)",
             }
@@ -173,7 +174,30 @@ class ReceiverManager:
             self.log(f"  -> {s['step']}"
                      + ("" if "ack" not in s
                         else f" ack={s['ack']}") + ("" if apply_mode else " (dry-run)"))
+        if apply_mode:
+            self._auto_prefix(rx, sdp.multicast_ip)
         self._notify_status(rx.nmos_id)
+
+    def _auto_prefix(self, rx, multicast_ip):
+        """When the device follows Auto, align its AES67 prefix to the patched
+        multicast's second octet (239.<prefix>.x.x)."""
+        if rx.dante_device_ip not in self.config["auto_prefix_devices"]:
+            return
+        try:
+            prefix = int(multicast_ip.split(".")[1])
+        except (IndexError, ValueError):
+            return
+        from . import dante
+        try:
+            current = dante.read_aes67_prefix(rx.dante_device_ip, timeout=1.0)
+            if current == prefix:
+                return
+            ok = dante.set_aes67_prefix(rx.dante_device_ip, prefix)
+        except OSError as e:
+            self.log(f"Auto-prefix for {rx.dante_device_ip} failed: {e}")
+            return
+        self.log(f"Auto-prefix: {rx.dante_device_ip} -> 239.{prefix}.x.x "
+                 f"(follows {multicast_ip}) {'ACK' if ok else 'no ACK'}")
 
     # ------------------------------------------------------------- devices
 
@@ -261,13 +285,27 @@ class ReceiverManager:
                     "last_activation": s["last_activation"],
                     "last_result": s["last_result"],
                 })
-            devices = [asdict(d) for d in self.devices]
+            auto = set(self.config["auto_prefix_devices"])
+            devices = []
+            for d in self.devices:
+                entry = asdict(d)
+                entry["auto_prefix"] = d.ip in auto
+                devices.append(entry)
             return {
                 "receivers": receivers,
                 "devices": devices,
                 "devices_updated": self.devices_updated,
                 "apply_mode": bool(self.config["apply_mode"]),
             }
+
+    def set_auto_prefix(self, ip, enabled):
+        with self.lock:
+            devs = self.config["auto_prefix_devices"]
+            if enabled and ip not in devs:
+                devs.append(ip)
+            elif not enabled and ip in devs:
+                devs.remove(ip)
+            self.config.save()
 
 
 def _now_ts():
