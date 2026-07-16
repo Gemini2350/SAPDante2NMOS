@@ -4,17 +4,6 @@ const $ = (id) => document.getElementById(id);
 
 let running = true;
 
-// ---------------------------------------------------------------- tabs
-
-document.querySelectorAll("#tabs .tab").forEach((btn) => {
-  btn.onclick = () => {
-    document.querySelectorAll("#tabs .tab").forEach((b) =>
-      b.classList.toggle("active", b === btn));
-    document.querySelectorAll(".tabpane").forEach((p) =>
-      (p.hidden = p.id !== "tab-" + btn.dataset.tab));
-  };
-});
-
 // ---------------------------------------------------------------- polling
 
 async function refresh() {
@@ -33,11 +22,8 @@ async function refresh() {
   chip.title = state.registrar || "";
   const auto = state.registrar_source === "discovered" ? " (auto)" : "";
   if (!state.registrar) {
-    if (state.auto_registrar) {
-      setChip(chip, "warn", "discovering registry…");
-    } else {
-      setChip(chip, "warn", "no registry configured");
-    }
+    setChip(chip, "warn", state.auto_registrar
+      ? "discovering registry…" : "no registry configured");
   } else if (state.registry_ok) {
     setChip(chip, "ok", "registry connected" + auto);
   } else {
@@ -47,19 +33,13 @@ async function refresh() {
   $("sap-chip").textContent = "SAP: " + state.sap_packets;
 
   const dante = state.dante || { receivers: [], devices: [], apply_mode: false };
-  if (dante.apply_mode) {
-    setChip($("apply-chip"), "err", "ARMED");
-  } else {
-    setChip($("apply-chip"), "warn", "DRY-RUN");
-  }
+  setChip($("apply-chip"), dante.apply_mode ? "err" : "warn",
+    dante.apply_mode ? "ARMED" : "DRY-RUN");
 
-  $("count-senders").textContent = state.streams.length || "";
-  $("count-receivers").textContent = dante.receivers.length || "";
-  $("count-devices").textContent = dante.devices.length || "";
+  $("devices-updated").textContent = dante.devices_updated
+    ? "last device scan: " + ago(dante.devices_updated) : "";
 
-  renderStreams(state.streams);
-  renderReceivers(dante.receivers);
-  renderDevices(dante);
+  renderDeviceCentric(state.streams, dante);
   $("log").textContent = state.log.slice().reverse().join("\n");
 }
 
@@ -68,159 +48,179 @@ function setChip(el, cls, text) {
   el.textContent = text;
 }
 
-// ---------------------------------------------------------------- senders
+// ---------------------------------------------------------------- device-centric view
 
-let lastStreamsJson = "";
+let lastSig = "";
 
-function renderStreams(streams) {
-  const tbody = $("stream-rows");
-  $("empty-senders").hidden = streams.length > 0;
+function renderDeviceCentric(streams, dante) {
+  const devices = dante.devices || [];
+  const receivers = dante.receivers || [];
 
-  // Only rebuild the table when the data actually changed — a rebuild in the
-  // middle of a click would swallow it. The "last seen" cells update below.
-  const json = JSON.stringify(streams);
-  if (json === lastStreamsJson) {
-    tbody.querySelectorAll("td[data-ts]").forEach((td) => {
-      td.textContent = ago(parseFloat(td.dataset.ts));
-    });
-    return;
+  // Rebuild only when structure/status changes (not on every "last seen" tick),
+  // otherwise a rebuild mid-click would swallow the interaction.
+  const sig = JSON.stringify([
+    devices, receivers,
+    streams.map((s) => [s.hash, s.name, s.mcast, s.port, s.format, s.src_ip,
+      s.origin, s.registered, s.external, s.stale]),
+  ]);
+  if (sig !== lastSig) {
+    lastSig = sig;
+    buildDeviceCentric(streams, devices, receivers);
   }
-  lastStreamsJson = json;
-  tbody.innerHTML = "";
-
-  for (const s of streams) {
-    const tr = document.createElement("tr");
-    if (s.stale) tr.classList.add("stale");
-
-    let status;
-    if (s.stale) status = badge("stale", "stale");
-    else if (s.external) status = badge("ext", "in registry (external)");
-    else if (s.registered) status = badge("reg", "registered");
-    else status = badge("pending", "pending");
-
-    tr.innerHTML = `
-      <td class="name" title="${esc(s.name)}">${esc(s.name) || "<i>unnamed</i>"}</td>
-      <td class="mono">${esc(s.mcast)}</td>
-      <td class="mono">${s.port ?? ""}</td>
-      <td>${esc(s.format)}</td>
-      <td class="mono">${esc(s.src_ip)}</td>
-      <td>${badge(s.origin, s.origin === "sap" ? "SAP" : "manual")}</td>
-      <td>${status}</td>
-      <td data-ts="${s.last_seen}">${ago(s.last_seen)}</td>
-      <td>
-        <button class="icon" data-sdp="${s.hash}" title="View SDP">SDP</button>
-        <button class="icon" data-del="${s.hash}" title="Remove stream">&#10005;</button>
-      </td>`;
-    tbody.appendChild(tr);
-  }
+  // Live-update the "last seen" cells in place.
+  document.querySelectorAll("td[data-ts]").forEach((td) => {
+    td.textContent = ago(parseFloat(td.dataset.ts));
+  });
 }
 
-// ---------------------------------------------------------------- receivers
+function buildDeviceCentric(streams, devices, receivers) {
+  const list = $("device-list");
+  list.innerHTML = "";
 
-let lastReceiversJson = "";
+  // Index senders by source IP and receivers by device IP.
+  const sendersByIp = {};
+  for (const s of streams) (sendersByIp[s.src_ip] ||= []).push(s);
+  const rxByIp = {};
+  for (const r of receivers) (rxByIp[r.dante_device_ip] ||= []).push(r);
 
-function renderReceivers(receivers) {
-  const tbody = $("receiver-rows");
-  $("empty-receivers").hidden = receivers.length > 0;
+  const deviceIps = new Set(devices.map((d) => d.ip));
 
-  const json = JSON.stringify(receivers);
-  if (json === lastReceiversJson) return;
-  lastReceiversJson = json;
-  tbody.innerHTML = "";
-
-  for (const r of receivers) {
-    const tr = document.createElement("tr");
-    const chRange = r.channels > 1
-      ? `${r.dante_base_channel}–${r.dante_base_channel + r.channels - 1}`
-      : `${r.dante_base_channel}`;
-
-    let patch = r.active ? badge("reg", "active") : badge("pending", "idle");
-
-    let flow = "";
-    if (r.active) {
-      const fmap = {
-        connected: ["reg", "audio"],
-        no_audio: ["stale", "NO AUDIO"],
-        none: ["stale", "no flow"],
-        unknown: ["pending", "polling…"],
-      };
-      const [cls, label] = fmap[r.stream_health] || fmap.unknown;
-      flow = badge(cls, label);
-    }
-
-    const sender = r.sender_id
-      ? `<div class="sub mono" title="connected sender">← ${esc(r.sender_id)}</div>` : "";
-
-    let lastCmd = "";
-    if (r.last_result && r.last_result.length) {
-      if (r.last_ack === true) lastCmd = badge("reg", "ACK ok");
-      else if (r.last_ack === false) lastCmd = badge("stale", "NO ACK");
-      else lastCmd = badge("sap", "dry-run");
-      lastCmd += ` <button class="icon" data-rxdetail="${r.nmos_id}">details</button>`;
-    }
-
-    tr.innerHTML = `
-      <td class="name" title="${esc(r.label)}">${esc(r.label)}</td>
-      <td class="mono">${esc(r.dante_device_ip)}</td>
-      <td class="mono">${chRange} (${r.channels}ch)</td>
-      <td>${patch}</td>
-      <td>${flow}</td>
-      <td class="mono">${esc(r.source)}${sender}</td>
-      <td>${lastCmd}</td>
-      <td>
-        <button class="icon" data-rxdel="${r.nmos_id}" title="Remove receiver">&#10005;</button>
-      </td>`;
-    tbody.appendChild(tr);
-  }
-}
-
-// ---------------------------------------------------------------- devices
-
-let lastDevicesJson = "";
-
-function renderDevices(dante) {
-  const tbody = $("device-rows");
-  $("empty-devices").hidden = dante.devices.length > 0;
-  $("devices-updated").textContent = dante.devices_updated
-    ? "last scan: " + ago(dante.devices_updated) : "";
-
-  const json = JSON.stringify(dante.devices);
-  if (json === lastDevicesJson) return;
-  lastDevicesJson = json;
-  tbody.innerHTML = "";
+  // datalist for the add-receiver IP field
   const dl = $("device-ips");
   dl.innerHTML = "";
-
-  for (const d of dante.devices) {
-    const tr = document.createElement("tr");
-    const rate = d.sample_rate ? (d.sample_rate / 1000) + " kHz" : "";
-    const autoBtn = `<button class="icon ${d.auto_prefix ? "on" : ""}"
-        data-autopfx="${esc(d.ip)}" data-autoval="${d.auto_prefix ? 1 : 0}"
-        title="Auto: follow the patched multicast's prefix on NMOS connect">
-        Auto${d.auto_prefix ? " ✓" : ""}</button>`;
-    const prefix = d.mcast_prefix
-      ? `<span class="mono">239.${d.mcast_prefix}.x.x</span>
-         <button class="icon" data-prefix="${esc(d.ip)}" data-pfxval="${d.mcast_prefix}"
-           title="Set AES67 multicast prefix">edit</button> ${autoBtn}`
-      : autoBtn;
-    tr.innerHTML = `
-      <td class="name">${esc(d.name)}</td>
-      <td class="mono">${esc(d.ip)}</td>
-      <td>${esc(d.model)}</td>
-      <td>${d.aes67_enabled ? badge("reg", "yes") : badge("stale", "no")}</td>
-      <td>${prefix}</td>
-      <td class="mono">${rate}</td>
-      <td class="mono">${d.rx_channels}</td>
-      <td class="mono">${d.tx_channels}</td>
-      <td><button class="icon" data-mkrx="${esc(d.ip)}" data-mkname="${esc(d.name)}"
-        title="Create receiver for this device">+ RX</button></td>`;
-    tbody.appendChild(tr);
-
-    const opt = document.createElement("option");
-    opt.value = d.ip;
-    opt.label = d.name;
-    dl.appendChild(opt);
+  for (const d of devices) {
+    const o = document.createElement("option");
+    o.value = d.ip; o.label = d.name; dl.appendChild(o);
   }
+
+  for (const d of devices) {
+    list.appendChild(deviceCard(d, sendersByIp[d.ip] || [], rxByIp[d.ip] || []));
+  }
+
+  // Senders whose source is not a discovered Dante device, plus receivers
+  // pointing at an unknown IP.
+  const other = streams.filter((s) => !deviceIps.has(s.src_ip));
+  const otherRx = receivers.filter((r) => !deviceIps.has(r.dante_device_ip));
+  $("other-section").hidden = other.length === 0 && otherRx.length === 0;
+  const otbody = $("other-rows");
+  otbody.innerHTML = "";
+  for (const s of other) otbody.insertAdjacentHTML("beforeend", senderRow(s, true));
+  for (const r of otherRx) {
+    otbody.insertAdjacentHTML("beforeend",
+      `<tr><td colspan="9" class="sub">RX ${esc(r.label)} → unknown device
+       ${esc(r.dante_device_ip)} ${receiverInline(r)}</td></tr>`);
+  }
+
+  $("empty-all").hidden = devices.length > 0 || streams.length > 0;
+}
+
+function deviceCard(d, senders, receivers) {
+  const card = document.createElement("div");
+  card.className = "device-card";
+  const rate = d.sample_rate ? (d.sample_rate / 1000) + " kHz" : "";
+  const autoBtn = `<button class="icon ${d.auto_prefix ? "on" : ""}"
+      data-autopfx="${esc(d.ip)}" data-autoval="${d.auto_prefix ? 1 : 0}"
+      title="Auto: follow the patched multicast's prefix on NMOS connect">
+      Auto${d.auto_prefix ? " ✓" : ""}</button>`;
+  const prefix = d.mcast_prefix
+    ? `<span class="mono">239.${d.mcast_prefix}.x.x</span>
+       <button class="icon" data-prefix="${esc(d.ip)}" data-pfxval="${d.mcast_prefix}"
+         title="Set AES67 multicast prefix">edit</button> ${autoBtn}`
+    : autoBtn;
+
+  const txRows = senders.length
+    ? `<table><tbody>${senders.map((s) => senderRow(s, false)).join("")}</tbody></table>`
+    : `<div class="lane-empty">no transmitted flows</div>`;
+  const rxRows = receivers.length
+    ? `<table><tbody>${receivers.map((r) => receiverRow(r)).join("")}</tbody></table>`
+    : `<div class="lane-empty">no receivers — add one with “+ Add RX”</div>`;
+
+  card.innerHTML = `
+    <div class="device-head">
+      <div class="device-title">
+        <span class="device-name">${esc(d.name) || "&lt;unnamed&gt;"}</span>
+        <span class="mono device-ip">${esc(d.ip)}</span>
+        ${d.aes67_enabled ? badge("reg", "AES67") : badge("stale", "no AES67")}
+        <span class="device-meta">${prefix}</span>
+        <span class="device-meta note">${esc(d.model)} · ${rate}
+          · ${d.tx_channels}tx/${d.rx_channels}rx</span>
+      </div>
+      <div class="device-actions">
+        <button class="icon" data-createtx="${esc(d.ip)}" data-txname="${esc(d.name)}"
+          title="Create a multicast TX flow (NMOS sender) on this device">+ Create TX</button>
+        <button class="icon" data-mkrx="${esc(d.ip)}" data-mkname="${esc(d.name)}"
+          title="Add an NMOS receiver on this device">+ Add RX</button>
+      </div>
+    </div>
+    <div class="device-body">
+      <div class="lane">
+        <div class="lane-title">Sending (TX) &rarr; NMOS senders <span class="count">${senders.length}</span></div>
+        ${txRows}
+      </div>
+      <div class="lane">
+        <div class="lane-title">Receiving (RX) &larr; NMOS receivers <span class="count">${receivers.length}</span></div>
+        ${rxRows}
+      </div>
+    </div>`;
+  return card;
+}
+
+function senderRow(s, showSrc) {
+  let status;
+  if (s.stale) status = badge("stale", "stale");
+  else if (s.external) status = badge("ext", "in registry (external)");
+  else if (s.registered) status = badge("reg", "registered");
+  else status = badge("pending", "pending");
+  const src = showSrc ? `<td class="mono">${esc(s.src_ip)}</td>` : "";
+  return `<tr class="${s.stale ? "stale" : ""}">
+    <td class="name" title="${esc(s.name)}">${esc(s.name) || "<i>unnamed</i>"}</td>
+    <td class="mono">${esc(s.mcast)}:${s.port ?? ""}</td>
+    <td>${esc(s.format)}</td>
+    ${showSrc ? `<td>${badge(s.origin, s.origin === "sap" ? "SAP" : "manual")}</td>` : ""}
+    ${src}
+    <td>${status}</td>
+    <td data-ts="${s.last_seen}">${ago(s.last_seen)}</td>
+    <td class="row-actions">
+      <button class="icon" data-sdp="${s.hash}" title="View SDP">SDP</button>
+      <button class="icon" data-del="${s.hash}" title="Remove stream">&#10005;</button>
+    </td></tr>`;
+}
+
+function receiverRow(r) {
+  const chRange = r.channels > 1
+    ? `${r.dante_base_channel}–${r.dante_base_channel + r.channels - 1}`
+    : `${r.dante_base_channel}`;
+  const patch = r.active ? badge("reg", "active") : badge("pending", "idle");
+  let flow = "";
+  if (r.active) {
+    const fmap = { connected: ["reg", "audio"], no_audio: ["stale", "NO AUDIO"],
+      none: ["stale", "no flow"], unknown: ["pending", "polling…"] };
+    const [cls, label] = fmap[r.stream_health] || fmap.unknown;
+    flow = badge(cls, label);
+  }
+  const sender = r.sender_id
+    ? `<div class="sub mono" title="connected sender">← ${esc(r.sender_id)}</div>` : "";
+  let lastCmd = "";
+  if (r.last_result && r.last_result.length) {
+    if (r.last_ack === true) lastCmd = badge("reg", "ACK ok");
+    else if (r.last_ack === false) lastCmd = badge("stale", "NO ACK");
+    else lastCmd = badge("sap", "dry-run");
+    lastCmd += ` <button class="icon" data-rxdetail="${r.nmos_id}">details</button>`;
+  }
+  return `<tr>
+    <td class="name" title="${esc(r.label)}">${esc(r.label)}</td>
+    <td class="mono">ch ${chRange} (${r.channels})</td>
+    <td>${patch}</td>
+    <td>${flow}</td>
+    <td class="mono">${esc(r.source)}${sender}</td>
+    <td>${lastCmd}</td>
+    <td class="row-actions">
+      <button class="icon" data-rxdel="${r.nmos_id}" title="Remove receiver">&#10005;</button>
+    </td></tr>`;
+}
+
+function receiverInline(r) {
+  return r.active ? badge("reg", "active") : badge("pending", "idle");
 }
 
 // ---------------------------------------------------------------- helpers
@@ -412,41 +412,28 @@ $("btn-discover").onclick = async () => {
 
 // ---------------------------------------------------------------- table actions
 
-let lastState = null;
-
-$("stream-rows").addEventListener("click", async (e) => {
+async function handleAction(e) {
   const btn = e.target.closest("button");
   if (!btn) return;
+  const d = btn.dataset;
 
-  if (btn.dataset.sdp) {
-    const r = await fetch("/api/sdp/" + btn.dataset.sdp);
+  if (d.sdp) {
+    const r = await fetch("/api/sdp/" + d.sdp);
     if (!r.ok) return;
     $("sdp-view-title").textContent = "SDP";
     $("sdp-view").textContent = await r.text();
     openModal("modal-sdp");
-  }
-
-  if (btn.dataset.del) {
+  } else if (d.del) {
     if (!confirm("Remove this stream (and unregister it from the registry)?")) return;
-    await fetch("/api/stream/" + btn.dataset.del, { method: "DELETE" });
+    await fetch("/api/stream/" + d.del, { method: "DELETE" });
     refresh();
-  }
-});
-
-$("receiver-rows").addEventListener("click", async (e) => {
-  const btn = e.target.closest("button");
-  if (!btn) return;
-
-  if (btn.dataset.rxdel) {
+  } else if (d.rxdel) {
     if (!confirm("Remove this receiver (and unregister it from the registry)?")) return;
-    await fetch("/api/receiver/" + btn.dataset.rxdel, { method: "DELETE" });
+    await fetch("/api/receiver/" + d.rxdel, { method: "DELETE" });
     refresh();
-  }
-
-  if (btn.dataset.rxdetail) {
+  } else if (d.rxdetail) {
     const state = await (await fetch("/api/state")).json();
-    const rx = (state.dante.receivers || []).find(
-      (r) => r.nmos_id === btn.dataset.rxdetail);
+    const rx = (state.dante.receivers || []).find((r) => r.nmos_id === d.rxdetail);
     if (!rx) return;
     const lines = (rx.last_result || []).map((s) => {
       let l = s.step;
@@ -458,29 +445,23 @@ $("receiver-rows").addEventListener("click", async (e) => {
     $("sdp-view-title").textContent = `Last Dante commands — ${rx.label}`;
     $("sdp-view").textContent = lines.join("\n\n") || "(none)";
     openModal("modal-sdp");
-  }
-});
-
-$("device-rows").addEventListener("click", async (e) => {
-  const btn = e.target.closest("button");
-  if (!btn) return;
-  if (btn.dataset.mkrx) {
-    openAddReceiver(btn.dataset.mkrx, btn.dataset.mkname);
-  }
-  if (btn.dataset.autopfx) {
+  } else if (d.mkrx) {
+    openAddReceiver(d.mkrx, d.mkname);
+  } else if (d.createtx) {
+    alert("Creating a multicast TX flow on " + d.txname + " (" + d.createtx +
+      ") is not wired up yet — the Dante 'create flow' command still needs to " +
+      "be captured. Once done, this button creates the flow and it appears as " +
+      "an NMOS sender.");
+  } else if (d.autopfx) {
     await fetch("/api/devices/auto_prefix", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ip: btn.dataset.autopfx, enabled: btn.dataset.autoval !== "1" }),
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ip: d.autopfx, enabled: d.autoval !== "1" }),
     });
     refresh();
-    return;
-  }
-  if (btn.dataset.prefix) {
-    const cur = btn.dataset.pfxval;
-    const val = prompt(`AES67 multicast prefix for ${btn.dataset.prefix}\n` +
-      `Address range becomes 239.<prefix>.x.x (0–255).\n` +
-      `Writing requires ARMED mode.`, cur);
+  } else if (d.prefix) {
+    const val = prompt(`AES67 multicast prefix for ${d.prefix}\n` +
+      `Address range becomes 239.<prefix>.x.x (0–255).\nWriting requires ARMED mode.`,
+      d.pfxval);
     if (val === null) return;
     const prefix = parseInt(val, 10);
     if (isNaN(prefix) || prefix < 0 || prefix > 255) {
@@ -488,15 +469,17 @@ $("device-rows").addEventListener("click", async (e) => {
       return;
     }
     const r = await fetch("/api/devices/prefix", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ip: btn.dataset.prefix, prefix }),
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ip: d.prefix, prefix }),
     });
     const res = await r.json();
     if (!r.ok) alert(res.message || "Failed to set prefix.");
     refresh();
   }
-});
+}
+
+$("device-list").addEventListener("click", handleAction);
+$("other-rows").addEventListener("click", handleAction);
 
 $("btn-refresh-devices").onclick = async () => {
   await fetch("/api/devices/refresh", { method: "POST" });
