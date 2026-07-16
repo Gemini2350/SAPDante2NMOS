@@ -33,29 +33,26 @@ TPL_3201 = bytes.fromhex(
     "000bc0a80164000000000001e2400000000000000000000000000000000000010002"
     "000001000802138cef010101"
 )
-TPL_3410 = bytes.fromhex("2809001c002034100000000000000000080001010001000300000000")
-assert len(TPL_3201) == 112 and len(TPL_3410) == 28
+# 0x3410 bind: 36-byte form from the real Dante Controller stereo capture
+# (rx_stereo.pcap). @20:22 = target Dante RX channel. One bind per channel.
+TPL_3410 = bytes.fromhex(
+    "2809002400203410000000000000000008000201000100030000000000000000"
+    "00000000"
+)
+assert len(TPL_3201) == 112 and len(TPL_3410) == 36
 
 O_TXID, O_SRC, O_STREAMCH, O_PORT, O_MCAST = 4, 68, 102, 106, 108
-O_DESTENC, O_DESTCH = 52, 96          # 16-bit dest-channel fields in 0x3201
-O_TXID2, O_DANTECH = 4, 20            # 0x3410 (O_DANTECH: HYPOTHESE)
-
-# @52:54 companion value per destination Dante RX channel. Channels 1 and 2 are
-# byte-exact from captures; higher channels are extrapolated and unverified.
-_DEST_ENC = {1: 0x0002, 2: 0x0008}
-
-
-def dest_channel_enc(dante_channel: int) -> int:
-    if dante_channel in _DEST_ENC:
-        return _DEST_ENC[dante_channel]
-    return 1 << (2 * dante_channel - 1)  # UNVERIFIED for ch > 2
+O_DESTCH = 96                        # 16-bit dest Dante RX channel in 0x3201
+O_TXID2, O_DANTECH = 4, 20           # 0x3410 target channel @20:22
+# @52:54 in 0x3201 is a flow-level field (constant across the flow's channels,
+# NOT the dest channel) — left at the template value.
 
 
 def build_bind(dante_channel: int, txid: int = 0x20) -> bytes:
-    """0x3410: bindet den Flow an einen Ziel-Dante-RX-Kanal."""
+    """0x3410: bindet einen Ziel-Dante-RX-Kanal (ein Bind pro Kanal)."""
     p = bytearray(TPL_3410)
     p[O_TXID2:O_TXID2 + 2] = txid.to_bytes(2, "big")
-    p[O_DANTECH:O_DANTECH + 2] = dante_channel.to_bytes(2, "big")  # HYPOTHESE
+    p[O_DANTECH:O_DANTECH + 2] = dante_channel.to_bytes(2, "big")
     return bytes(p)
 
 
@@ -72,7 +69,6 @@ def build_map_channel(source_ip: str, multicast_ip: str, rtp_port: int,
         raise ValueError("dante_channel muss 1..65535 sein")
     p[O_STREAMCH] = stream_channel
     p[O_DESTCH:O_DESTCH + 2] = dante_channel.to_bytes(2, "big")
-    p[O_DESTENC:O_DESTENC + 2] = dest_channel_enc(dante_channel).to_bytes(2, "big")
     p[O_PORT:O_PORT + 2] = rtp_port.to_bytes(2, "big")
     p[O_MCAST:O_MCAST + 4] = socket.inet_aton(multicast_ip)
     return bytes(p)

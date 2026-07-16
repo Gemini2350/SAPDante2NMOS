@@ -24,14 +24,20 @@ class ReceiverMap:
 def translate(rx: ReceiverMap, sdp: SdpParams, apply: bool = False):
     """Baut (und sendet optional) die Dante-Kommandos fuer eine Verbindung.
 
-    Pro Kanal wird der Quell-Stream-Kanal (i+1) auf den Ziel-Dante-RX-Kanal
-    (dante_base_channel + i) gemappt. Frueher blieb das Zielfeld auf Kanal 1
-    stehen -> nur Kanal 1 wurde geschaltet.
+    Je Kanal: ein 0x3410-Bind auf den Ziel-Dante-RX-Kanal (dante_base_channel+i)
+    PLUS ein 0x3201-Mapping (Quell-Stream-Kanal i+1 -> selber Ziel-Kanal). Dante
+    Controller bindet jeden Kanal einzeln; frueher banden wir nur den Basiskanal,
+    darum wurde nur Kanal 1 empfangen.
     """
-    packets = [("bind -> dante-ch %d" % rx.dante_base_channel,
-                dante.build_bind(rx.dante_base_channel, 0x20))]
+    n = min(rx.channels, sdp.channels)
+    packets = []
     txid = 0x20
-    for i in range(min(rx.channels, sdp.channels)):
+    for i in range(n):
+        dante_ch = rx.dante_base_channel + i
+        txid += 5
+        packets.append(("bind -> dante-ch %d" % dante_ch,
+                        dante.build_bind(dante_ch, txid)))
+    for i in range(n):
         stream_ch = i + 1
         dante_ch = rx.dante_base_channel + i
         txid += 5

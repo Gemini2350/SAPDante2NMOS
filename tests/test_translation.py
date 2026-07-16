@@ -20,45 +20,47 @@ def test_sdp_parse():
     assert p.sample_rate == 48000
 
 
+# Byte-exact 0x3410 binds from the real Dante Controller stereo capture
+# (rx_stereo.pcap): #32 binds Dante RX channel 1, #126 binds channel 2.
+BIND_CH1 = bytes.fromhex(
+    "28090024001c341000000000000000000800020100010003000000000000000000000000")
+BIND_CH2 = bytes.fromhex(
+    "280900240037341000000000000000000800020100020003000000000000000000000000")
+
+
 def test_bind_matches_capture():
-    rx = ReceiverMap("RX 1-2", "192.168.97.101", 1, 2)
-    res = translate(rx, parse_aes67_sdp(SDP))
-    b0 = bytes.fromhex(res[0]["hex"])
-    assert dante.strip_txid(b0) == dante.strip_txid(dante.TPL_3410)
-
-
-def test_first_map_matches_capture():
-    rx = ReceiverMap("RX 1-2", "192.168.97.101", 1, 2)
-    res = translate(rx, parse_aes67_sdp(SDP))
-    b1 = bytes.fromhex(res[1]["hex"])
-    assert dante.strip_txid(b1) == dante.strip_txid(dante.TPL_3201)
-
-
-def test_channel_field_increments():
-    rx = ReceiverMap("RX 1-2", "192.168.97.101", 1, 2)
-    res = translate(rx, parse_aes67_sdp(SDP))
-    assert bytes.fromhex(res[1]["hex"])[dante.O_STREAMCH] == 1
-    assert bytes.fromhex(res[2]["hex"])[dante.O_STREAMCH] == 2
+    assert dante.build_bind(1, 0x1c) == BIND_CH1
+    assert dante.build_bind(2, 0x37) == BIND_CH2
 
 
 def test_bind_dest_channel_patch():
     assert dante.build_bind(8)[dante.O_DANTECH:dante.O_DANTECH + 2] == b"\x00\x08"
 
 
-# Byte-exact ground truth from Dante3.pcapng #544: source stream channel 6 mapped
-# to Dante RX channel 2 (sender 192.168.1.100 / 239.1.1.1:5004).
-CAPTURE_CH2 = bytes.fromhex(
-    "280900700058320100000101001000000000420200000000000000000001000000"
-    "000068000000000000000000030040000000000008006000000000000000001000"
-    "000bc0a80164000000000001e2400000000000000000000000000000000000020002"
-    "000006000802138cef010101"
-)
+def test_stereo_sequence_binds_and_maps_each_channel():
+    # A 2-channel receiver: one 0x3410 bind PER channel, then one 0x3201 map per
+    # channel — previously only the base channel was bound (only ch1 received).
+    rx = ReceiverMap("RX 1-2", "192.168.97.101", 1, 2)
+    res = translate(rx, parse_aes67_sdp(SDP))
+    assert [s["step"] for s in res] == [
+        "bind -> dante-ch 1", "bind -> dante-ch 2",
+        "map stream-ch 1 -> dante-ch 1", "map stream-ch 2 -> dante-ch 2"]
+    bind1, bind2, map1, map2 = (bytes.fromhex(s["hex"]) for s in res)
+    assert bind1[dante.O_DANTECH:dante.O_DANTECH + 2] == b"\x00\x01"
+    assert bind2[dante.O_DANTECH:dante.O_DANTECH + 2] == b"\x00\x02"
+    # maps: dest Dante channel @96:98 and source stream channel @102
+    assert map1[dante.O_DESTCH:dante.O_DESTCH + 2] == b"\x00\x01"
+    assert map2[dante.O_DESTCH:dante.O_DESTCH + 2] == b"\x00\x02"
+    assert map1[dante.O_STREAMCH] == 1 and map2[dante.O_STREAMCH] == 2
 
 
-def test_map_channel_2_matches_capture():
+def test_map_matches_capture_channel_fields():
+    # Byte-exact against rx_stereo #100 except the flow-level @52:54 field.
     pkt = dante.build_map_channel("192.168.1.100", "239.1.1.1", 5004,
-                                  stream_channel=6, dante_channel=2, txid=0x58)
-    assert pkt == CAPTURE_CH2
+                                  stream_channel=1, dante_channel=1, txid=0x2a)
+    assert pkt[dante.O_DESTCH:dante.O_DESTCH + 2] == b"\x00\x01"
+    assert pkt[dante.O_STREAMCH] == 1
+    assert pkt[dante.O_MCAST:dante.O_MCAST + 4] == bytes([239, 1, 1, 1])
 
 
 def test_aes67_prefix_write_matches_capture():
@@ -102,14 +104,3 @@ def test_aes67_prefix_parse():
     assert dante.parse_aes67_prefix(b"\x00" * 20) is None
 
 
-def test_map_targets_distinct_dante_channels():
-    # A stereo receiver must map stream ch1->dante ch1 and ch2->dante ch2,
-    # not both to channel 1 (the "only channel 1 switched" bug).
-    rx = ReceiverMap("RX 1-2", "192.168.97.101", 1, 2)
-    res = translate(rx, parse_aes67_sdp(SDP))
-    map1 = bytes.fromhex(res[1]["hex"])
-    map2 = bytes.fromhex(res[2]["hex"])
-    assert map1[dante.O_DESTCH:dante.O_DESTCH + 2] == b"\x00\x01"
-    assert map2[dante.O_DESTCH:dante.O_DESTCH + 2] == b"\x00\x02"
-    assert map1[dante.O_DESTENC:dante.O_DESTENC + 2] == b"\x00\x02"
-    assert map2[dante.O_DESTENC:dante.O_DESTENC + 2] == b"\x00\x08"
