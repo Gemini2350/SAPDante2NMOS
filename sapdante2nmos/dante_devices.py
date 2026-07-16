@@ -33,6 +33,8 @@ class DanteDevice:
     tx_channels: int = 0
     sample_rate: int = 0
     model: str = ""
+    # AES67 multicast address prefix: the device's flows use 239.<prefix>.x.x
+    mcast_prefix: int = 0
     # rx channel number -> subscription status_code (RTP flow monitor)
     rx_status: dict = field(default_factory=dict)
 
@@ -78,10 +80,20 @@ def discover_aes67_devices():
             tx_channels=_int(getattr(dev, "tx_count", 0)),
             sample_rate=_int(getattr(dev, "sample_rate", 0)),
             model=_model(dev),
+            mcast_prefix=_read_prefix(str(ip)),
             rx_status=_rx_status(dev),
         ))
     out.sort(key=lambda d: (not d.aes67_enabled, d.name.lower()))
     return out
+
+
+def _read_prefix(ip):
+    """Best-effort read of the AES67 multicast prefix (0 if unavailable)."""
+    try:
+        from . import dante
+        return dante.read_aes67_prefix(ip, timeout=1.0) or 0
+    except Exception:
+        return 0
 
 
 def _rx_status(dev):

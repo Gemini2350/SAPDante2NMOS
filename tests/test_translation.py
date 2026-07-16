@@ -61,6 +61,23 @@ def test_map_channel_2_matches_capture():
     assert pkt == CAPTURE_CH2
 
 
+def test_aes67_prefix_write_matches_capture():
+    # Byte-exact ground truth from prefix_l.pcap (Dante Controller):
+    #   #0 set prefix 99 (0x63), txid 0x00de
+    #   #8 set prefix 69 (0x45), txid 0x00e2
+    assert dante.build_set_aes67_prefix(99, 0x00de).hex() == \
+        "2809001400de11010000010180600010ef630000"
+    assert dante.build_set_aes67_prefix(69, 0x00e2).hex() == \
+        "2809001400e211010000010180600010ef450000"
+
+
+def test_aes67_prefix_parse():
+    # Tail of a real 0x1100 response with prefix 69.
+    resp = bytes.fromhex("00" * 148)[:-12] + bytes.fromhex("00000000ef450000001e8480")
+    assert dante.parse_aes67_prefix(resp) == 69
+    assert dante.parse_aes67_prefix(b"\x00" * 20) is None
+
+
 def test_map_targets_distinct_dante_channels():
     # A stereo receiver must map stream ch1->dante ch1 and ch2->dante ch2,
     # not both to channel 1 (the "only channel 1 switched" bug).

@@ -85,6 +85,55 @@ def strip_txid(pkt: bytes) -> bytes:
     return bytes(b)
 
 
+# ---------------------------------------------------------------------------
+# AES67 multicast address prefix (per device): the range is 239.<prefix>.x.x.
+# Reverse engineered from Dante Controller (prefix_l.pcap, 2026-07-16):
+#   WRITE 0x1101 (20 B): byte @17 = prefix, preceded by 0xEF (=239).
+#   READ  0x1100 query -> response ends in "ef <prefix> 00 00 00 1e 84 80";
+#         prefix is the byte at len-7 (guarded by the 0xEF + trailer).
+# ---------------------------------------------------------------------------
+
+TPL_1101_PREFIX = bytes.fromhex("2809001400e211010000010180600010ef450000")  # ef,69
+O_PREFIX = 17
+TPL_1100_INFO_QUERY = bytes.fromhex(
+    "2809003e00df1100000000190201820482050210021182188219830183028306"
+    "031003110303802100f08060002200630064006502220212832100660214"
+)
+_PREFIX_TRAILER = b"\x1e\x84\x80"
+
+
+def build_set_aes67_prefix(prefix: int, txid: int = 0xE2) -> bytes:
+    """0x1101: setzt den AES67-Multicast-Prefix (239.<prefix>.x.x)."""
+    if not 0 <= prefix <= 255:
+        raise ValueError("prefix muss 0..255 sein")
+    p = bytearray(TPL_1101_PREFIX)
+    p[O_TXID:O_TXID + 2] = txid.to_bytes(2, "big")
+    p[O_PREFIX] = prefix
+    return bytes(p)
+
+
+def parse_aes67_prefix(response: bytes):
+    """Prefix aus einer 0x1100-Info-Antwort lesen (None wenn nicht enthalten)."""
+    if len(response) >= 8 and response[-8] == 0xEF \
+            and response[-3:] == _PREFIX_TRAILER:
+        return response[-7]
+    return None
+
+
+def read_aes67_prefix(device_ip: str, txid: int = 0xDF, timeout: float = 2.0):
+    """Fragt den AES67-Multicast-Prefix eines Geraets ab."""
+    q = bytearray(TPL_1100_INFO_QUERY)
+    q[O_TXID:O_TXID + 2] = txid.to_bytes(2, "big")
+    resp = send(device_ip, bytes(q), timeout=timeout)
+    return parse_aes67_prefix(resp) if resp else None
+
+
+def set_aes67_prefix(device_ip: str, prefix: int, timeout: float = 2.0):
+    """Schreibt den AES67-Multicast-Prefix. Gibt True bei ACK zurueck."""
+    resp = send(device_ip, build_set_aes67_prefix(prefix), timeout=timeout)
+    return bool(resp and resp[6:8].hex() == "1101")
+
+
 def send(device_ip: str, pkt: bytes, timeout: float = 2.0):
     """Sendet ein Kommando an das Geraet (UDP, Port 4440) und wartet auf Antwort."""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

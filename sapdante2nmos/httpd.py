@@ -134,6 +134,13 @@ def make_server(engine, config):
                     threading.Thread(target=engine.receivers.refresh_devices,
                                      daemon=True).start()
                     return self.send_json({"ok": True})
+                if path == "/api/devices/prefix":
+                    body = json.loads(self.read_body() or b"{}")
+                    ip = (body.get("ip") or "").strip()
+                    prefix = int(body.get("prefix"))
+                    ok, msg = engine.set_device_prefix(ip, prefix)
+                    return self.send_json({"ok": ok, "message": msg},
+                                          200 if ok else 400)
             except ValueError as e:
                 return self.send_json({"error": str(e)}, 400)
             return self.send_json({"error": "not found"}, 404)

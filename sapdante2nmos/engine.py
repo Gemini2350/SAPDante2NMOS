@@ -441,6 +441,22 @@ class Engine:
         self._receivers_synced = ok
         return ok
 
+    def set_device_prefix(self, ip, prefix):
+        """Write a device's AES67 multicast prefix (guarded by ARMED)."""
+        if not 0 <= prefix <= 255:
+            return False, "prefix must be 0..255"
+        if not self.config["apply_mode"]:
+            return False, "DRY-RUN: enable ARMED in settings to write to devices"
+        from . import dante
+        try:
+            ok = dante.set_aes67_prefix(ip, prefix)
+        except OSError as e:
+            return False, str(e)
+        self._log(f"Set AES67 prefix of {ip} to 239.{prefix}.x.x "
+                  f"({'ACK' if ok else 'no ACK'})")
+        threading.Thread(target=self.receivers.refresh_devices, daemon=True).start()
+        return ok, ("device acknowledged" if ok else "no acknowledgement from device")
+
     def _on_receiver_status(self, nmos_id):
         """A receiver's connection changed — update its IS-04 subscription
         (sender_id / active) in the registry so controllers see the link."""

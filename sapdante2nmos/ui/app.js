@@ -194,11 +194,17 @@ function renderDevices(dante) {
   for (const d of dante.devices) {
     const tr = document.createElement("tr");
     const rate = d.sample_rate ? (d.sample_rate / 1000) + " kHz" : "";
+    const prefix = d.mcast_prefix
+      ? `<span class="mono">239.${d.mcast_prefix}.x.x</span>
+         <button class="icon" data-prefix="${esc(d.ip)}" data-pfxval="${d.mcast_prefix}"
+           title="Set AES67 multicast prefix">edit</button>`
+      : "—";
     tr.innerHTML = `
       <td class="name">${esc(d.name)}</td>
       <td class="mono">${esc(d.ip)}</td>
       <td>${esc(d.model)}</td>
       <td>${d.aes67_enabled ? badge("reg", "yes") : badge("stale", "no")}</td>
+      <td>${prefix}</td>
       <td class="mono">${rate}</td>
       <td class="mono">${d.rx_channels}</td>
       <td class="mono">${d.tx_channels}</td>
@@ -449,10 +455,31 @@ $("receiver-rows").addEventListener("click", async (e) => {
   }
 });
 
-$("device-rows").addEventListener("click", (e) => {
+$("device-rows").addEventListener("click", async (e) => {
   const btn = e.target.closest("button");
-  if (btn && btn.dataset.mkrx) {
+  if (!btn) return;
+  if (btn.dataset.mkrx) {
     openAddReceiver(btn.dataset.mkrx, btn.dataset.mkname);
+  }
+  if (btn.dataset.prefix) {
+    const cur = btn.dataset.pfxval;
+    const val = prompt(`AES67 multicast prefix for ${btn.dataset.prefix}\n` +
+      `Address range becomes 239.<prefix>.x.x (0–255).\n` +
+      `Writing requires ARMED mode.`, cur);
+    if (val === null) return;
+    const prefix = parseInt(val, 10);
+    if (isNaN(prefix) || prefix < 0 || prefix > 255) {
+      alert("Prefix must be a number 0–255.");
+      return;
+    }
+    const r = await fetch("/api/devices/prefix", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ip: btn.dataset.prefix, prefix }),
+    });
+    const res = await r.json();
+    if (!r.ok) alert(res.message || "Failed to set prefix.");
+    refresh();
   }
 });
 
