@@ -54,6 +54,7 @@ async function refresh() {
   window._lastStreams = state.streams;
   renderSap(state.streams);
   renderDante(dante);
+  renderLawo(state.lawo || { devices: [] });
   $("log").textContent = state.log.slice().reverse().join("\n");
 }
 
@@ -227,6 +228,82 @@ function receiverRow(r) {
 
 function receiverInline(r) {
   return r.active ? badge("reg", "active") : badge("pending", "idle");
+}
+
+// ---------------------------------------------------------------- Lawo tab
+
+let lastLawoSig = "";
+
+function renderLawo(lawo) {
+  const devices = lawo.devices || [];
+  $("empty-lawo").hidden = devices.length > 0;
+  const sig = JSON.stringify(devices);
+  if (sig === lastLawoSig) return;
+  lastLawoSig = sig;
+  const list = $("lawo-list");
+  list.innerHTML = "";
+  for (const d of devices) {
+    const card = document.createElement("div");
+    card.className = "device-card";
+    card.innerHTML = `
+      <div class="device-head">
+        <div class="device-title">
+          <span class="device-name">${esc(d.label || d.host)}</span>
+          <span class="mono device-ip">${esc(d.host)}:${d.port}</span>
+        </div>
+        <div class="device-actions">
+          <button class="icon" data-lawobrowse="${esc(d.host)}" data-lawoport="${d.port}"
+            title="Browse the Ember+ tree">Browse</button>
+          <button class="icon" data-lawodel="${esc(d.host)}" data-lawoport="${d.port}"
+            title="Remove device">&#10005;</button>
+        </div>
+      </div>
+      <div class="lawo-tree" id="tree-${esc(d.host)}-${d.port}"></div>`;
+    list.appendChild(card);
+  }
+}
+
+async function lawoBrowse(host, port, path, container) {
+  const q = `host=${encodeURIComponent(host)}&port=${port}` +
+    (path ? `&path=${encodeURIComponent(path)}` : "");
+  container.innerHTML = '<div class="note">loading…</div>';
+  let res;
+  try {
+    res = await (await fetch("/api/lawo/browse?" + q)).json();
+  } catch {
+    container.innerHTML = '<div class="note">connection failed</div>';
+    return;
+  }
+  if (res.error) {
+    container.innerHTML = `<div class="note">error: ${esc(res.error)}</div>`;
+    return;
+  }
+  container.innerHTML = "";
+  for (const el of res.elements) container.appendChild(lawoNode(host, port, el));
+}
+
+function lawoNode(host, port, el) {
+  const row = document.createElement("div");
+  row.className = "tree-row";
+  const isParam = el.kind === "parameter";
+  const label = esc(el.identifier || "#" + el.number);
+  const desc = el.description ? ` <span class="note">${esc(el.description)}</span>` : "";
+  if (isParam) {
+    const v = el.value === null || el.value === undefined ? "" : el.value;
+    row.innerHTML = `<span class="tree-key">${label}</span>${desc}
+      <span class="tree-val mono">${esc(String(v))}</span>
+      <button class="icon" data-lawoset="${esc(el.path)}"
+        data-lawohost="${esc(host)}" data-lawoport="${port}"
+        data-lawoval="${esc(String(v))}" title="Set value">set</button>
+      <span class="note mono">${esc(el.path)}</span>`;
+  } else {
+    row.innerHTML = `<span class="tree-toggle" data-lawoexpand="${esc(el.path)}"
+      data-lawohost="${esc(host)}" data-lawoport="${port}">▸</span>
+      <span class="tree-key">${label}</span>${desc}
+      <span class="note mono">${esc(el.path)}</span>
+      <div class="tree-children" hidden></div>`;
+  }
+  return row;
 }
 
 // ---------------------------------------------------------------- helpers
@@ -526,6 +603,69 @@ $("sap-rows").addEventListener("click", handleAction);
 $("btn-refresh-devices").onclick = async () => {
   await fetch("/api/devices/refresh", { method: "POST" });
 };
+
+// ---------------------------------------------------------------- Lawo actions
+
+$("btn-add-lawo").onclick = () => {
+  $("lawo-label").value = "";
+  $("lawo-host").value = "";
+  $("lawo-port").value = 9000;
+  $("lawo-error").textContent = "";
+  openModal("modal-lawo");
+};
+
+$("btn-lawo-confirm").onclick = async () => {
+  const body = {
+    label: $("lawo-label").value.trim(),
+    host: $("lawo-host").value.trim(),
+    port: parseInt($("lawo-port").value, 10) || 9000,
+  };
+  if (!body.host) { $("lawo-error").textContent = "Enter a host/IP."; return; }
+  const r = await fetch("/api/lawo/device", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const res = await r.json();
+  if (!r.ok) { $("lawo-error").textContent = res.message || "Failed."; return; }
+  closeModals();
+  lastLawoSig = "";  // force re-render
+  refresh();
+};
+
+$("lawo-list").addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-lawobrowse],[data-lawoexpand],[data-lawoset],[data-lawodel]");
+  if (!btn) return;
+  const d = btn.dataset;
+
+  if (d.lawobrowse) {
+    lawoBrowse(d.lawobrowse, d.lawoport,
+      null, document.getElementById(`tree-${d.lawobrowse}-${d.lawoport}`));
+  } else if (d.lawoexpand) {
+    const children = btn.parentElement.querySelector(".tree-children");
+    if (!children.hidden) { children.hidden = true; btn.textContent = "▸"; return; }
+    children.hidden = false; btn.textContent = "▾";
+    if (!children.dataset.loaded) {
+      children.dataset.loaded = "1";
+      lawoBrowse(d.lawohost, d.lawoport, d.lawoexpand, children);
+    }
+  } else if (d.lawoset) {
+    const val = prompt(`Set ${d.lawoset}`, d.lawoval);
+    if (val === null) return;
+    const isNum = /^-?\d+$/.test(val.trim());
+    const r = await fetch("/api/lawo/set", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ host: d.lawohost, port: parseInt(d.lawoport, 10),
+        path: d.lawoset, value: isNum ? parseInt(val, 10) : val,
+        type: isNum ? "int" : "string" }),
+    });
+    if (!r.ok) alert("Set failed: " + ((await r.json()).error || r.statusText));
+  } else if (d.lawodel) {
+    if (!confirm(`Remove Lawo device ${d.lawodel}:${d.lawoport}?`)) return;
+    await fetch(`/api/lawo/device/${d.lawodel}/${d.lawoport}`, { method: "DELETE" });
+    lastLawoSig = "";
+    refresh();
+  }
+});
 
 $("btn-add-device").onclick = () => {
   $("dev-ip").value = "";

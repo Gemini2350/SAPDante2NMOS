@@ -85,6 +85,16 @@ def make_server(engine, config):
                 except Exception as e:
                     return self.send_json({"error": str(e)}, 502)
                 return self.send_json({"domains": domains, "candidates": candidates})
+            if path == "/api/lawo/browse":
+                qs = parse_qs(urlparse(self.path).query)
+                host = qs.get("host", [""])[0]
+                port = int(qs.get("port", ["9000"])[0])
+                node = qs.get("path", [""])[0] or None
+                try:
+                    return self.send_json({"elements":
+                                           engine.lawo.browse(host, port, node)})
+                except Exception as e:
+                    return self.send_json({"error": str(e)}, 502)
             if path.startswith("/api/sdp/"):
                 sdp = engine.get_sdp(path[len("/api/sdp/"):])
                 if sdp is None:
@@ -155,12 +165,33 @@ def make_server(engine, config):
                     ok, msg = engine.create_tx_flow(ip, channels, multicast, port)
                     return self.send_json({"ok": ok, "message": msg},
                                           200 if ok else 400)
+                if path == "/api/lawo/device":
+                    body = json.loads(self.read_body() or b"{}")
+                    ok, msg = engine.lawo.add_device(
+                        body.get("host") or "", body.get("port") or 9000,
+                        body.get("label") or "")
+                    return self.send_json({"ok": ok, "message": msg},
+                                          200 if ok else 400)
+                if path == "/api/lawo/set":
+                    body = json.loads(self.read_body() or b"{}")
+                    try:
+                        engine.lawo.set_value(body["host"], body["port"],
+                                              body["path"], body["value"],
+                                              body.get("type", "int"))
+                    except (OSError, KeyError) as e:
+                        return self.send_json({"error": str(e)}, 502)
+                    return self.send_json({"ok": True})
             except ValueError as e:
                 return self.send_json({"error": str(e)}, 400)
             return self.send_json({"error": "not found"}, 404)
 
         def do_DELETE(self):
             path = self.path.split("?")[0].rstrip("/")
+            if path.startswith("/api/lawo/device/"):
+                rest = path[len("/api/lawo/device/"):].split("/")
+                ok = engine.lawo.remove_device(rest[0],
+                                               rest[1] if len(rest) > 1 else 9000)
+                return self.send_json({"ok": ok}, 200 if ok else 404)
             if path.startswith("/api/stream/"):
                 ok = engine.remove_stream(path[len("/api/stream/"):])
                 return self.send_json({"ok": ok}, 200 if ok else 404)

@@ -73,6 +73,8 @@ class Engine:
         self._device = None
         self._rx_device = None
         self.receivers = ReceiverManager(config, self._log)
+        from .lawo import LawoManager
+        self.lawo = LawoManager(config, self._log)
         self.receivers.add_status_listener(self._on_receiver_status)
         self._receivers_synced = False
         self.on_receivers_changed = None  # set by the IS-12 server
@@ -156,6 +158,7 @@ class Engine:
                     {k: v for k, v in s.items() if k != "sdp"} for s in streams
                 ],
                 "dante": self.receivers.as_api(),
+                "lawo": self.lawo.as_api(),
                 "log": list(self.log),
             }
 

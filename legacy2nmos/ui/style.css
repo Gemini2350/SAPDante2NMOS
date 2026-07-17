@@ -146,6 +146,13 @@ button.icon.on { background: var(--ok); border-color: var(--ok); color: #06210f;
 .lane tr:last-child td { border-bottom: none; }
 .row-actions { text-align: right; white-space: nowrap; }
 
+.lawo-tree { padding: 8px 14px; font-size: 0.85rem; }
+.tree-row { padding: 2px 0; }
+.tree-children { margin-left: 18px; border-left: 1px solid var(--border); padding-left: 8px; }
+.tree-toggle { cursor: pointer; user-select: none; color: var(--text-dim); margin-right: 4px; }
+.tree-key { font-weight: 600; }
+.tree-val { color: var(--accent); margin: 0 6px; }
+
 .group-title {
   font-size: 0.85rem;
   font-weight: 600;

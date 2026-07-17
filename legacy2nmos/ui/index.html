@@ -66,9 +66,19 @@
     </div>
   </section>
 
-  <!-- Lawo (placeholder) -->
+  <!-- Lawo (Ember+) -->
   <section id="pane-lawo" class="pane" hidden>
-    <div class="empty">Lawo integration &mdash; coming later.</div>
+    <div class="pane-toolbar">
+      <span class="note">Lawo devices controlled over Ember+ (S101, TCP 9000)</span>
+      <button id="btn-add-lawo">+ Add Lawo device</button>
+    </div>
+    <div id="lawo-list"></div>
+    <div id="empty-lawo" class="empty" hidden>
+      No Lawo devices yet.<br>
+      <small>Add one with <b>+ Add Lawo device</b> (host and Ember+ port, default
+      9000). You can then browse its Ember+ tree to locate stream/routing
+      parameters.</small>
+    </div>
   </section>
 
   <!-- Cymatic / Archwave (placeholder) -->
@@ -126,6 +136,31 @@
     <div class="modal-actions">
       <button class="secondary" data-close>Cancel</button>
       <button class="primary" id="btn-add-rx-confirm">Add receiver</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Lawo device modal -->
+<div class="modal-backdrop" id="modal-lawo" hidden>
+  <div class="modal">
+    <h2>Add Lawo device (Ember+)</h2>
+    <p class="hint">Connects over Ember+ (S101 framing, TCP). Default port is 9000.
+    After adding, browse the device's tree to find the stream/routing parameters.</p>
+    <label>Label <small>(optional)</small>
+      <input type="text" id="lawo-label" placeholder="Power Core">
+    </label>
+    <div class="grid2">
+      <label>Host / IP
+        <input type="text" id="lawo-host" placeholder="192.168.10.20">
+      </label>
+      <label>Ember+ port
+        <input type="number" id="lawo-port" value="9000">
+      </label>
+    </div>
+    <div class="error" id="lawo-error"></div>
+    <div class="modal-actions">
+      <button class="secondary" data-close>Cancel</button>
+      <button class="primary" id="btn-lawo-confirm">Add device</button>
     </div>
   </div>
 </div>
