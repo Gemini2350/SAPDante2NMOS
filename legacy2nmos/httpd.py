@@ -85,6 +85,10 @@ def make_server(engine, config):
                 except Exception as e:
                     return self.send_json({"error": str(e)}, 502)
                 return self.send_json({"domains": domains, "candidates": candidates})
+            if path == "/api/cymatic/snapshot":
+                qs = parse_qs(urlparse(self.path).query)
+                host = qs.get("host", [""])[0]
+                return self.send_json(engine.cymatic.snapshot(host))
             if path == "/api/lawo/browse":
                 qs = parse_qs(urlparse(self.path).query)
                 host = qs.get("host", [""])[0]
@@ -181,6 +185,19 @@ def make_server(engine, config):
                     except (OSError, KeyError) as e:
                         return self.send_json({"error": str(e)}, 502)
                     return self.send_json({"ok": True})
+                if path == "/api/cymatic/device":
+                    body = json.loads(self.read_body() or b"{}")
+                    ok, msg = engine.cymatic.add_device(body.get("host") or "",
+                                                        body.get("label") or "")
+                    return self.send_json({"ok": ok, "message": msg},
+                                          200 if ok else 400)
+                if path == "/api/cymatic/ttl":
+                    body = json.loads(self.read_body() or b"{}")
+                    try:
+                        changed = engine.cymatic.set_ttl(body["host"])
+                    except Exception as e:
+                        return self.send_json({"error": str(e)}, 502)
+                    return self.send_json({"ok": True, "changed": changed})
             except ValueError as e:
                 return self.send_json({"error": str(e)}, 400)
             return self.send_json({"error": "not found"}, 404)
@@ -191,6 +208,11 @@ def make_server(engine, config):
                 rest = path[len("/api/lawo/device/"):].split("/")
                 ok = engine.lawo.remove_device(rest[0],
                                                rest[1] if len(rest) > 1 else 9000)
+                return self.send_json({"ok": ok}, 200 if ok else 404)
+            if path.startswith("/api/cymatic/device/"):
+                from urllib.parse import unquote
+                ok = engine.cymatic.remove_device(
+                    unquote(path[len("/api/cymatic/device/"):]))
                 return self.send_json({"ok": ok}, 200 if ok else 404)
             if path.startswith("/api/stream/"):
                 ok = engine.remove_stream(path[len("/api/stream/"):])

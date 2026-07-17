@@ -23,6 +23,7 @@ DEFAULTS = {
     "registry_recheck_interval": 300,  # re-check SAP streams vs registry (s)
     "manual_devices": [],        # device IPs to query by unicast (cross-subnet)
     "lawo_devices": [],          # Lawo devices controlled over Ember+
+    "cymatic_devices": [],       # Cymatic/Archwave devices (HTTP+JSON)
 }
 
 

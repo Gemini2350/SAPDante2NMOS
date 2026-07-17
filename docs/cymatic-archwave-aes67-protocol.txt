@@ -1,0 +1,435 @@
+  
+  
+Confidential AES67 
+Configuration 
+Protocol 
+    March 10, 2017 
+ 
+  Page 1/8 
+Archwave AG, Bahnstrasse 18b, CH-8603 Schwerzenbach www.archwave.net  
+Introduction 
+This document describes the HTTP-based communication between Archwave AES67 devices (from now on 
+“device”) and their configuration peers (from now on “client”). These peer are most likely web clients of the page 
+server by the own device.  
+Note that the objects provided here might be used to configure connections with devices that are not made by 
+Archwave. Particularly, the lists provided by the Archwave devices will include network devices and AES67 
+streams which are present in the network, but which are not necessarily Archwave devices. The client cannot 
+assume that any of the objects given here exists in an arbitrary AES67 device. E.g., the device list is provided 
+so that the client can provide a link to the configuration website of all present AES67 devices.  
+General 
+1. Configuration parameters, option lists and commends are exchanged using:  
+1.1. HTTP GET on pre-specified addresses, when data flows from device to client. 
+1.2. HTTP POST on pre-specified addresses, when data flows from client to device. 
+2. Data objects are transmitted using JSON (JavaScript Object Notation) 
+  
+  
+  
+Confidential AES67 
+Configuration 
+Protocol 
+    March 10, 2017 
+ 
+  Page 2/8 
+Archwave AG, Bahnstrasse 18b, CH-8603 Schwerzenbach www.archwave.net  
+Commands 
+These commands are provided by the device on fixed addresses. They are sent by the application to instruct 
+the device to perform certain tasks. 
+Reboot command 
+Instructs the device to restart. A parameter can tell whether to restart normally or into the bootloader in order to 
+perform a firmware update. 
+- Location: <Device URL>/command 
+- Notation: 
+{ 
+  "ArchwaveCMD": { 
+    "version": 1, 
+    "reboot": true, 
+    "bootloader": false 
+  } 
+} 
+ 
+Read-only objects 
+These objects are provided by the device on fixed addresses. They represent the general status of the device 
+or the network it is connected to. The client cannot change these; it reads them to inform the user or to provide 
+some help with the setup. 
+Device list 
+Lists each AES67 device currently present in the network, with its name and  the address of its webserver. 
+This object can change dynamically, the client should read it periodically to ensure a good user experience. 
+Using an outdated list has technically no negative impact, no race conditions or similar problems are to be 
+expected when updating this object or using its contents. 
+- Location: <Device URL>/device_list 
+- Notation: 
+{ 
+  "ArchwaveAES67": { 
+    "version": 1, 
+    "devices": [ 
+      { 
+        "hostname": "Device 1 hostname", 
+        "IPaddress": "192.168.4.202:1234" 
+      }, 
+      { 
+        "hostname": "Device 2 hostname", 
+        "IPaddress": "192.168.4.203:8080" 
+      } 
+    ] 
+  } 
+} 
+  
+  
+  
+Confidential AES67 
+Configuration 
+Protocol 
+    March 10, 2017 
+ 
+  Page 3/8 
+Archwave AG, Bahnstrasse 18b, CH-8603 Schwerzenbach www.archwave.net  
+Stream list 
+Lists each AES67 stream currently provided in the network, with its name and its channel count.  
+This object can change dynamically, the client should read it periodically to ensure a good user experience. 
+Using an outdated list has technically no negative impact, no race conditions or similar problems are to be 
+expected when updating this object or using its contents. 
+- Location: <Device URL>/stream_list 
+- Notation: 
+{ 
+  "ArchwaveAES67": { 
+    "version": 1, 
+    "streams": [ 
+      { 
+        "name": "Stream 1 name", 
+        "channelCount": 8 
+      }, 
+      { 
+        "name": "Stream 2 name", 
+        "channelCount": 2 
+      } 
+    ] 
+  } 
+} 
+Parameter strings 
+Contains display values for each index-value parameter. 
+This object can change when the Audio Mode parameter is changed. The client should read this object after 
+changing the Audio Mode parameter. 
+- Location: <Device URL>/parameter_strings 
+- Notation: 
+{ 
+  "ArchwaveAES67": { 
+    "version": 1, 
+    "samplingRates": [ 
+      { 
+        "displayString": "44.1 kHz", 
+        "index": 1 
+      }, 
+      { 
+        "displayString": "88.2 kHz", 
+        "index": 3 
+      }, 
+      { 
+        "displayString": "64 kHz", 
+        "index": 7 
+      }, 
+      { 
+        "displayString": "96 kHz", 
+        "index": 4 
+      } 
+    ], 
+    "resolutions": [ 
+      { 
+        "displayString": "16 bits", 
+        "index": 0 
+      }, 
+      { 
+        "displayString": "24 bits", 
+        "index": 1 
+      } 
+    ], 
+  
+  
+Confidential AES67 
+Configuration 
+Protocol 
+    March 10, 2017 
+ 
+  Page 4/8 
+Archwave AG, Bahnstrasse 18b, CH-8603 Schwerzenbach www.archwave.net  
+    "audioModes": [ 
+      { 
+        "displayString": "8xAnalog – 2xDigital (SPDIF)", 
+        "index": 0 
+      }, 
+      { 
+        "displayString": "8xAnalog – 8xDigital (ADAT)", 
+        "index": 1 
+      }, 
+      { 
+        "displayString": "8xAnalog – 4xDigital (SMUX)", 
+        "index": 2 
+      } 
+    ], 
+    "streamStatus": [ 
+      { 
+        "displayString": "Idle", 
+        "index": 0 
+      }, 
+      { 
+        "displayString": "Starting", 
+        "index": 1 
+      }, 
+      { 
+        "displayString": "Transmitting", 
+        "index": 2 
+      }, 
+      { 
+        "displayString": "Address collision", 
+        "index": 3 
+      }, 
+      { 
+        "displayString": "Waiting", 
+        "index": 4 
+      }, 
+      { 
+        "displayString": "Receiving", 
+        "index": 5 
+      }, 
+      { 
+        "displayString": "Error X", 
+        "index": 6 
+      }, 
+      { 
+        "displayString": "Not enough decoders", 
+        "index": 7 
+      } 
+    ]  
+  } 
+} 
+  
+  
+  
+Confidential AES67 
+Configuration 
+Protocol 
+    March 10, 2017 
+ 
+  Page 5/8 
+Archwave AG, Bahnstrasse 18b, CH-8603 Schwerzenbach www.archwave.net  
+Status 
+Contains status and information. 
+This object can change dynamically, the client should read it periodically to ensure a good user experience.  
+- Location: <Device URL>/status 
+- Notation: 
+{ 
+  "ArchwaveAES67": { 
+    "version": 1, 
+    "sources": [ 
+      { 
+        "status": 1, 
+        "SDP": “”  
+      }, 
+      { 
+        "status": 0, 
+        "SDP": “” 
+      } 
+    ], 
+    "outputs": [ 
+      { 
+        "status": 5, 
+        "SDP": “” 
+      }, 
+      { 
+        "status": 7, 
+        "SDP": “” 
+      }, 
+      { 
+        "status": 5, 
+        "SDP": “” 
+      } 
+    ], 
+    "manufacturer": “Archwave AG”, 
+    "model": “uNet2500”, 
+    "iconPath": “/icon.png”, 
+    "operatingMode": “ETHERNET”, <!-- ETHERNET or USB --> 
+    "needsReboot": false, 
+    "PTP": { 
+      "state": "MASTER", 
+      "grandMasterID": "04-00-00-FF-FE-00-05-66", 
+      "currentOffset": -64513, 
+            } 
+  } 
+} 
+Software versions 
+Contains version information for the application and the bootloader running on the system.  
+- Location: <Device URL>/sw_versions 
+- Notation: 
+{ 
+  "ArchwaveVER": { 
+    "version": 1, 
+    "bootloader": { 
+ "version": "version info in a string" 
+    }, 
+    "application": { 
+ "version": "version info in a string" 
+    }, 
+    "updatesThroughBootloader": false 
+  } 
+} 
+  
+  
+Confidential AES67 
+Configuration 
+Protocol 
+    March 10, 2017 
+ 
+  Page 6/8 
+Archwave AG, Bahnstrasse 18b, CH-8603 Schwerzenbach www.archwave.net  
+Parameter objects 
+These objects are provided by the device on fixed addresses. They represent the configuration of different 
+areas of the device. The client can change their contents, with the exception of the read -only fields (mainly 
+status fields). Client changes on read-only fields are simply ignored.  
+The status fields can change dynamically, the client should read them periodically.  
+General Configuration 
+This object contains parameters that affect the global device behavior. 
+- Location: <Device URL>/general 
+- Notation: 
+{ 
+  "ArchwaveAES67": { 
+    "version": 1, 
+    "config": { 
+      "name": "Device name", 
+      "DHCPenable": true, 
+      "currentIPaddress": “192.168.4.52”, 
+      "currentIPmask": “255.255.255.0”, 
+      "currentIPgateway": “192.168.4.1”, 
+      "MACaddress": “00:07:f5:42:02:4a”, 
+      "IPaddress": “192.168.4.202”, 
+      "IPmask": “255.255.255.0”, 
+      "IPgateway": “192.168.4.1”, 
+      "IPDNS1": “192.168.4.100”, 
+      "IPDNS2": “10.10.0.122”, 
+      "samplingRate": 2, 
+      "resolution": 1, 
+      "audioMode": 0, 
+      "syntonizedMode": false, 
+      "playoutDelay": { 
+"min": 10, 
+"max": 20000, 
+"msPerSample": 0.23333, 
+"delayInSamples": 256 
+               }, 
+      "PTP": { 
+        "domain": 0, 
+        "preferredMaster": false, 
+        "clockClass": 0, 
+        "logAnnounceInterval": 0, 
+        "logSyncInterval ": 0, 
+        "ipTTL": 1 
+              }, 
+      "SIPreceivers": { 
+        "SIPusername": “receiver”, 
+        "SIPpassword": “”, 
+        "SIPserver": “” 
+              } 
+      "SAP": { 
+        "MulticastAddress": "239.233.233.233", 
+        "Port": 9875, 
+        "SessionTimeout": 120, 
+        "SessionAnnouncementEnabled": true, 
+        "BrowsingEnabled": true 
+      } 
+    } 
+  } 
+} 
+  
+  
+  
+Confidential AES67 
+Configuration 
+Protocol 
+    March 10, 2017 
+ 
+  Page 7/8 
+Archwave AG, Bahnstrasse 18b, CH-8603 Schwerzenbach www.archwave.net  
+UI Helper 
+This object contains is an information container for the web UI. It can hold a JSON file of up to 512 bytes.  
+- Location: <Device URL>/UI_helper 
+Sources 
+This object contains the parameters that affect the audio streams that the device sends into the network.  
+The amount of outgoing streams changes with the Audio Mode. This list should be read again after changing 
+the Audio Mode parameter. 
+- Location: <Device URL>/sources 
+- Notation: 
+{ 
+  "ArchwaveAES67": { 
+  "version": 1, 
+    "sources": [ 
+      { 
+        "name": "Analog Inputs on <device name>", 
+        "streamEnable": true, 
+        "multicastAddress": “239.0.4.202:5004”, 
+        "automaticConfigEnabled": true, 
+        "RTPTTL": 1, 
+        "SIPusername": “transmitter1”,  
+        "SIPpassword": “”,  
+        "SIPserver": “” 
+      }, 
+      { 
+        "name": "Digital Inputs on <device name>", 
+        "streamEnable": true, 
+        "multicastAddress": “239.1.4.202:5004”, 
+        "automaticConfigEnabled": true, 
+        "RTPTTL": 1, 
+        "SIPusername": “transmitter2”,  
+        "SIPpassword": “”,  
+        "SIPserver": “”  
+      }   
+    ] 
+  } 
+} 
+  
+  
+  
+Confidential AES67 
+Configuration 
+Protocol 
+    March 10, 2017 
+ 
+  Page 8/8 
+Archwave AG, Bahnstrasse 18b, CH-8603 Schwerzenbach www.archwave.net  
+Output channels 
+This object contains the parameters that affect the audio that the device receives from the network. 
+The amount of outgoing streams changes with the Audio Mode. This list should be read again after changing 
+the Audio Mode parameter. 
+The fields streamPath and manualSDP are mutually exclusive; if both of them are empty (“”) the channel is not 
+connected; if one of them has content, it defines the way the connection is made; if both of them have content, 
+the streamPath is used (Bonjour-based Ravenna connection). 
+Channel number in both the streamPath and the manualSDPChannel fields are 1-based, i.e., the first channel is 
+the number 1. 
+- Location: <Device URL>/outputs 
+- Notation: 
+{ 
+  "ArchwaveAES67": { 
+    "version": 1, 
+    "outputs": [ 
+      { 
+        "name": "Analog Output 1 on <device name>", 
+        "streamPath": “Digital Inputs on MyDevice/4”, 
+        "manualSDP": “”, 
+        "manualSDPChannel": 0, 
+ 
+      }, 
+      { 
+        "name": "Analog Output 2 on <device name>", 
+        "streamPath": “Analog Inputs on Device 8/4”, 
+        "manualSDP": “”, 
+        "manualSDPChannel": 0, 
+ 
+      }, 
+      { 
+        "name": "Digital Output 1 on <device name>", 
+        "streamPath": “Digital Inputs on MyDevice/5”, 
+        "manualSDP": “”, 
+        "manualSDPChannel": 0, 
+ 
+      } 
+    ] 
+  } 
+} 
+ 

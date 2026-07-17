@@ -55,6 +55,7 @@ async function refresh() {
   renderSap(state.streams);
   renderDante(dante);
   renderLawo(state.lawo || { devices: [] });
+  renderCymatic(state.cymatic || { devices: [] });
   $("log").textContent = state.log.slice().reverse().join("\n");
 }
 
@@ -304,6 +305,82 @@ function lawoNode(host, port, el) {
       <div class="tree-children" hidden></div>`;
   }
   return row;
+}
+
+// ---------------------------------------------------------------- Cymatic tab
+
+let lastCymaticSig = "";
+
+function renderCymatic(cymatic) {
+  const devices = cymatic.devices || [];
+  $("empty-cymatic").hidden = devices.length > 0;
+  const sig = JSON.stringify(devices);
+  if (sig === lastCymaticSig) return;
+  lastCymaticSig = sig;
+  const list = $("cymatic-list");
+  list.innerHTML = "";
+  for (const d of devices) {
+    const card = document.createElement("div");
+    card.className = "device-card";
+    card.innerHTML = `
+      <div class="device-head">
+        <div class="device-title">
+          <span class="device-name">${esc(d.label || d.host)}</span>
+          <span class="mono device-ip">${esc(d.host)}</span>
+        </div>
+        <div class="device-actions">
+          <button class="icon" data-cymload="${esc(d.host)}"
+            title="Read sources/outputs">Refresh</button>
+          <button class="icon" data-cymttl="${esc(d.host)}"
+            title="Force multicast TTL to 64">TTL→64</button>
+          <button class="icon" data-cymdel="${esc(d.host)}"
+            title="Remove device">&#10005;</button>
+        </div>
+      </div>
+      <div class="device-body" id="cym-${cssId(d.host)}">
+        <div class="lane-empty">click Refresh to read streams</div>
+      </div>`;
+    list.appendChild(card);
+  }
+}
+
+function cssId(s) { return s.replace(/[^a-zA-Z0-9]/g, "_"); }
+
+async function cymaticLoad(host) {
+  const box = document.getElementById("cym-" + cssId(host));
+  box.innerHTML = '<div class="lane-empty">loading…</div>';
+  let s;
+  try {
+    s = await (await fetch("/api/cymatic/snapshot?host=" + encodeURIComponent(host))).json();
+  } catch { box.innerHTML = '<div class="lane-empty">connection failed</div>'; return; }
+  if (!s.reachable) {
+    box.innerHTML = `<div class="lane-empty">unreachable: ${esc(s.error || "no response")}</div>`;
+    return;
+  }
+  const ttlWarn = s.ttl_ok === false
+    ? ` ${badge("stale", "TTL≠64")}` : (s.ttl_ok ? ` ${badge("reg", "TTL 64")}` : "");
+  const srcRows = s.sources.length ? s.sources.map((x) =>
+    `<tr><td class="name">${esc(x.name)}</td><td class="mono">${esc(x.multicast)}</td>
+      <td>${x.enabled ? badge("reg", "on") : badge("pending", "off")}</td>
+      <td>${badge(statusCls(x.status), esc(String(x.status)))}</td>
+      <td class="mono">ttl ${x.ttl}</td></tr>`).join("")
+    : `<tr><td class="lane-empty">none</td></tr>`;
+  const outRows = s.outputs.length ? s.outputs.map((x) =>
+    `<tr><td class="name">${esc(x.name)}</td>
+      <td class="mono">${esc(x.stream_path || x.manual_sdp ? "SDP set" : "—")}</td>
+      <td>${badge(statusCls(x.status), esc(String(x.status)))}</td></tr>`).join("")
+    : `<tr><td class="lane-empty">none</td></tr>`;
+  box.innerHTML = `
+    <div class="lane"><div class="lane-title">Sources (TX) &rarr; NMOS senders${ttlWarn}</div>
+      <table><tbody>${srcRows}</tbody></table></div>
+    <div class="lane"><div class="lane-title">Outputs (RX) &larr; NMOS receivers</div>
+      <table><tbody>${outRows}</tbody></table></div>`;
+}
+
+function statusCls(s) {
+  if (s === "transmitting" || s === "receiving") return "reg";
+  if (s === "error" || s === "collision" || s === "no decoders") return "stale";
+  return "pending";
 }
 
 // ---------------------------------------------------------------- helpers
@@ -631,6 +708,53 @@ $("btn-lawo-confirm").onclick = async () => {
   lastLawoSig = "";  // force re-render
   refresh();
 };
+
+// ---------------------------------------------------------------- Cymatic actions
+
+$("btn-add-cymatic").onclick = () => {
+  $("cym-label").value = "";
+  $("cym-host").value = "";
+  $("cym-error").textContent = "";
+  openModal("modal-cymatic");
+};
+
+$("btn-cym-confirm").onclick = async () => {
+  const body = { label: $("cym-label").value.trim(), host: $("cym-host").value.trim() };
+  if (!body.host) { $("cym-error").textContent = "Enter an address."; return; }
+  const r = await fetch("/api/cymatic/device", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const res = await r.json();
+  if (!r.ok) { $("cym-error").textContent = res.message || "Failed."; return; }
+  closeModals();
+  lastCymaticSig = "";
+  refresh();
+};
+
+$("cymatic-list").addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-cymload],[data-cymttl],[data-cymdel]");
+  if (!btn) return;
+  const d = btn.dataset;
+  if (d.cymload) {
+    cymaticLoad(d.cymload);
+  } else if (d.cymttl) {
+    const r = await fetch("/api/cymatic/ttl", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ host: d.cymttl }),
+    });
+    const res = await r.json();
+    if (!r.ok) alert("TTL set failed: " + (res.error || r.statusText));
+    else alert("TTL set to 64" + (res.changed && res.changed.length
+      ? " (" + res.changed.join(", ") + ")" : " (already 64)"));
+    cymaticLoad(d.cymttl);
+  } else if (d.cymdel) {
+    if (!confirm(`Remove Cymatic device ${d.cymdel}?`)) return;
+    await fetch("/api/cymatic/device/" + encodeURIComponent(d.cymdel), { method: "DELETE" });
+    lastCymaticSig = "";
+    refresh();
+  }
+});
 
 $("lawo-list").addEventListener("click", async (e) => {
   const btn = e.target.closest("[data-lawobrowse],[data-lawoexpand],[data-lawoset],[data-lawodel]");

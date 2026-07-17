@@ -81,9 +81,18 @@
     </div>
   </section>
 
-  <!-- Cymatic / Archwave (placeholder) -->
+  <!-- Cymatic / Archwave (HTTP + JSON) -->
   <section id="pane-cymatic" class="pane" hidden>
-    <div class="empty">Cymatic / Archwave integration &mdash; coming later.</div>
+    <div class="pane-toolbar">
+      <span class="note">Archwave AES67 devices (HTTP/JSON config protocol)</span>
+      <button id="btn-add-cymatic">+ Add Cymatic device</button>
+    </div>
+    <div id="cymatic-list"></div>
+    <div id="empty-cymatic" class="empty" hidden>
+      No Cymatic/Archwave devices yet.<br>
+      <small>Add one with its address (host or host:port). Sources = its TX
+      streams (NMOS senders), Outputs = its RX channels (NMOS receivers).</small>
+    </div>
   </section>
 </main>
 
@@ -136,6 +145,26 @@
     <div class="modal-actions">
       <button class="secondary" data-close>Cancel</button>
       <button class="primary" id="btn-add-rx-confirm">Add receiver</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Cymatic device modal -->
+<div class="modal-backdrop" id="modal-cymatic" hidden>
+  <div class="modal">
+    <h2>Add Cymatic / Archwave device</h2>
+    <p class="hint">Configured over HTTP/JSON (Archwave AES67 protocol). Enter the
+    device address — host or host:port (the device's web server).</p>
+    <label>Label <small>(optional)</small>
+      <input type="text" id="cym-label" placeholder="uNet2500">
+    </label>
+    <label>Address
+      <input type="text" id="cym-host" placeholder="192.168.4.202  or  192.168.4.202:80">
+    </label>
+    <div class="error" id="cym-error"></div>
+    <div class="modal-actions">
+      <button class="secondary" data-close>Cancel</button>
+      <button class="primary" id="btn-cym-confirm">Add device</button>
     </div>
   </div>
 </div>

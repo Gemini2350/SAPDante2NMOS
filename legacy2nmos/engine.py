@@ -75,6 +75,8 @@ class Engine:
         self.receivers = ReceiverManager(config, self._log)
         from .lawo import LawoManager
         self.lawo = LawoManager(config, self._log)
+        from .cymatic import CymaticManager
+        self.cymatic = CymaticManager(config, self._log)
         self.receivers.add_status_listener(self._on_receiver_status)
         self._receivers_synced = False
         self.on_receivers_changed = None  # set by the IS-12 server
@@ -159,6 +161,7 @@ class Engine:
                 ],
                 "dante": self.receivers.as_api(),
                 "lawo": self.lawo.as_api(),
+                "cymatic": self.cymatic.as_api(),
                 "log": list(self.log),
             }
 

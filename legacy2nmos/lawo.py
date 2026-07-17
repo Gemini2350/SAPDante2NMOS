@@ -129,7 +129,7 @@ class LawoManager:
 
     def create_output_sender(self, host, port, interface, stream_id, sender_id,
                              multicast, rtp_port=5004, codec=1, frame_size=48,
-                             ttl=15):
+                             ttl=64):
         # codec: 0=L16, 1=L24, 2=L32, 3=AM824
         return self._invoke_func(host, port, "createOutputStreamSender",
                                  [(interface, self.S), (stream_id, self.S),
