@@ -263,17 +263,31 @@ class Engine:
             except (AttributeError, OSError):
                 pass
             sock.bind(("0.0.0.0", self.config["sap_port"]))
-            iface = socket.inet_aton(self.config["interface_ip"]) if self.config["interface_ip"] \
-                else struct.pack("=I", socket.INADDR_ANY)
-            mreq = socket.inet_aton(self.config["sap_group"]) + iface
-            sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+            group = socket.inet_aton(self.config["sap_group"])
+            # Join the SAP group on EVERY local interface, not just the default
+            # route — a multi-homed gateway must catch announcements on all
+            # subnets (e.g. Dante devices in another VLAN).
+            if self.config["interface_ip"]:
+                ifaces = [self.config["interface_ip"]]
+            else:
+                ifaces = [i["ip"] for i in list_interfaces()
+                          if not i["ip"].startswith("127.")] or [None]
+            joined = []
+            for ip in ifaces:
+                iface = socket.inet_aton(ip) if ip else struct.pack("=I", socket.INADDR_ANY)
+                try:
+                    sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP,
+                                    group + iface)
+                    joined.append(ip or "default")
+                except OSError:
+                    pass
             sock.settimeout(1.0)
         except OSError as e:
             self._log(f"SAP listener failed to start: {e}")
             return
 
         self._log(f"SAP listening on {self.config['sap_group']}:{self.config['sap_port']}"
-                  + (f" via {self.config['interface_ip']}" if self.config["interface_ip"] else ""))
+                  f" via {', '.join(joined) or 'default'}")
 
         while self.running:
             try:
@@ -319,6 +333,21 @@ class Engine:
                 return h
 
         parsed = parse_sdp(sdp)
+        # De-duplicate the same flow arriving from different sources: a flow we
+        # created (origin "dante-tx") is superseded by the device's own SAP
+        # announcement (real name/channel count). Key on multicast + port.
+        flow_key = (parsed.get("ip"), parsed.get("port"))
+        if flow_key[0]:
+            with self.lock:
+                dupes = [s for s in self.streams.values()
+                         if (s["mcast"], s["port"]) == flow_key]
+            for dup in dupes:
+                if origin == "sap" and dup["origin"] == "dante-tx":
+                    self._log(f"SAP superseded created flow {flow_key[0]} "
+                              f"({dup['name'] or ''} -> {parsed.get('name', '')})")
+                    self.remove_stream(dup["hash"])
+                elif origin == "dante-tx" and dup["origin"] in ("sap", "dante-tx"):
+                    return dup["hash"]   # already known, don't duplicate
         stream = {
             "hash": h,
             "sdp": sdp,
@@ -480,11 +509,8 @@ class Engine:
         return ok, ("device acknowledged" if ok else "no acknowledgement from device")
 
     def create_tx_flow(self, ip, channels, multicast, port=5004):
-        """Create an AES67 multicast TX flow on a device.
-
-        The device announces the flow via SAP, so it appears as an NMOS sender
-        through the normal SAP path — no separate registration needed here.
-        """
+        """Create a multicast TX flow on a Dante device and register it as an
+        NMOS sender directly from the device's ARC acknowledgement (no SAP)."""
         if not channels or len(channels) > 2:
             return False, "select 1 or 2 channels"
         try:
@@ -500,10 +526,24 @@ class Engine:
         self._log(f"Create TX flow on {ip}: ch{'+'.join(map(str, channels))} "
                   f"-> {multicast}:{port} "
                   f"({variant + ' ACK' if ok else 'no ACK'})")
-        return ok, (f"device acknowledged ({variant} flow) — the flow will appear "
-                    "as a sender via SAP" if ok else
-                    "no acknowledgement from device (neither AES67 nor classic "
-                    "flow create was accepted)")
+        if not ok:
+            return False, ("no acknowledgement from device (neither AES67 nor "
+                           "classic flow create was accepted)")
+        # The device confirmed the flow over ARC — register it as an NMOS sender
+        # straight away, no waiting for a SAP announcement.
+        sdp = self._dante_tx_sdp(ip, multicast, port, len(channels))
+        self._ingest(sdp, origin="dante-tx")
+        return True, f"created ({variant} flow) and registered as an NMOS sender"
+
+    def _dante_tx_sdp(self, device_ip, multicast, port, channels):
+        return (
+            f"v=0\r\no=- 1 1 IN IP4 {device_ip}\r\n"
+            f"s=Dante TX {multicast}\r\n"
+            f"c=IN IP4 {multicast}/64\r\n"          # /64 = multicast TTL 64
+            f"t=0 0\r\nm=audio {port} RTP/AVP 96\r\n"
+            f"a=rtpmap:96 L24/48000/{channels}\r\n"
+            f"a=source-filter: incl IN IP4 {multicast} {device_ip}\r\n"
+            f"a=ptime:1\r\n")
 
     def _on_receiver_status(self, nmos_id):
         """A receiver's connection changed — update its IS-04 subscription

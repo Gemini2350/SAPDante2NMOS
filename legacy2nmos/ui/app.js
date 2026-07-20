@@ -184,7 +184,8 @@ function senderRow(s, showSrc) {
     <td class="name" title="${esc(s.name)}">${esc(s.name) || "<i>unnamed</i>"}</td>
     <td class="mono">${esc(s.mcast)}:${s.port ?? ""}</td>
     <td>${esc(s.format)}</td>
-    ${showSrc ? `<td>${badge(s.origin, s.origin === "sap" ? "SAP" : "manual")}</td>` : ""}
+    ${showSrc ? `<td>${badge(s.origin, { sap: "SAP", manual: "manual",
+      "dante-tx": "Dante TX" }[s.origin] || s.origin)}</td>` : ""}
     ${src}
     <td>${status}</td>
     <td data-ts="${s.last_seen}">${ago(s.last_seen)}</td>

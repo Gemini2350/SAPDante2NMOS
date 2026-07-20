@@ -202,6 +202,7 @@ td.mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font
 }
 .badge.sap      { background: #1f3a5f; color: #79b8ff; }
 .badge.manual   { background: #3d2e58; color: #c8a6ff; }
+.badge.dante-tx { background: #1f3a5f; color: #79b8ff; }
 .badge.reg      { background: #1c3627; color: var(--ok); }
 .badge.ext      { background: #303a26; color: #b8cc52; }
 .badge.pending  { background: #3a3120; color: var(--warn); }

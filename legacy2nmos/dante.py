@@ -199,18 +199,24 @@ def build_create_tx_flow_classic(multicast_ip: str, rtp_port: int = 5004,
     return bytes(p)
 
 
+def _create_ok(resp, opcode: str) -> bool:
+    """A create succeeded if the device echoes the opcode with a full response.
+    An unsupported opcode gets a 10-byte error stub (header + 2-byte error code),
+    e.g. Neutrik answers 0x2601 with `2809 000a <txid> 2601 0030`."""
+    return bool(resp and resp[6:8].hex() == opcode and len(resp) > 10)
+
+
 def create_tx_flow(device_ip: str, channels, multicast_ip: str,
                    rtp_port: int = 5004, timeout: float = 2.0):
     """Create a multicast TX flow. Tries the AES67 variant (0x2601), then the
     classic variant (0x2201) for devices that speak it. Returns (ok, variant)."""
     pkt = build_create_tx_flow(channels, multicast_ip, rtp_port)
-    resp = send(device_ip, pkt, timeout=timeout)
-    if resp and resp[6:8].hex() == "2601":
+    if _create_ok(send(device_ip, pkt, timeout=timeout), "2601"):
         return True, "aes67"
     # Fall back to the classic flow create (e.g. Neutrik devices).
     resp = send(device_ip, build_create_tx_flow_classic(multicast_ip, rtp_port),
                 timeout=timeout)
-    if resp and resp[6:8].hex() == "2201":
+    if _create_ok(resp, "2201"):
         return True, "classic"
     return False, None
 
