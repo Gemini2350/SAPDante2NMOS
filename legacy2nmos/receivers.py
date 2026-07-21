@@ -135,6 +135,7 @@ class ReceiverManager:
         if act.get("mode") == "activate_immediate" and st.get("master_enable", True):
             self._activate(rx, st)
         elif body.get("master_enable") is False and act.get("mode") == "activate_immediate":
+            self._deactivate(rx)
             with self.lock:
                 self.state[nmos_id]["summary"] = {"active": False, "source": "",
                                                   "sender_id": None}
@@ -144,6 +145,26 @@ class ReceiverManager:
                                     "activation_time": _now_ts()}
             self._notify_status(nmos_id)
         return st
+
+    def _deactivate(self, rx):
+        """IS-05 disconnect: clear the Dante RX-channel subscriptions on the
+        device so it actually stops receiving — not just flip the NMOS state."""
+        from . import dante
+        n = rx.channels
+        steps = []
+        for i in range(n):
+            dante_ch = rx.dante_base_channel + i
+            resp = dante.clear_subscription(rx.dante_device_ip, dante_ch)
+            ok = bool(resp and resp[6:8].hex() in ("3201", "3410", "2801"))
+            steps.append({"step": f"clear dante-ch {dante_ch}",
+                          "hex": "", "ack": ok,
+                          "response": resp.hex() if resp else None})
+            self.log(f"IS-05 deactivate {rx.label}: clear dante-ch {dante_ch} "
+                     f"{'ACK' if ok else 'no ACK'}")
+        with self.lock:
+            self.state[rx.nmos_id]["last_result"] = steps
+            self.state[rx.nmos_id]["last_ack"] = (
+                all(s["ack"] for s in steps) if steps else None)
 
     def _activate(self, rx, st):
         sdp_text = (st.get("transport_file") or {}).get("data") or ""
