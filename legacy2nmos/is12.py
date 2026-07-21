@@ -72,17 +72,15 @@ def _monitor_status(rx_state):
     else:
         connection = (UNHEALTHY, "Dante device did not acknowledge commands")
 
-    # streamStatus comes from the Dante subscription status polled per RX channel.
-    # Dante code 14 ("subscribed, no audio") is NOT a stream failure — an idle or
-    # silent AES67 flow sits there permanently, so mapping it to Unhealthy made
-    # the monitor cry red all the time. It's PartiallyHealthy: subscribed, audio
-    # not confirmed. Only a receiver that's active yet not subscribed at all
-    # (code 0 — our patch didn't take / the subscription dropped) is a real
-    # Unhealthy. Audio flowing (code 10) is Healthy.
+    # streamStatus comes from the Dante subscription status polled per RX channel,
+    # and only matters while the receiver is active (an inactive receiver already
+    # returned all-Inactive/grey above). An active receiver that is subscribed but
+    # gets no audio (Dante code 14) is a real fault → red. Audio flowing (10) is
+    # green; active-but-not-subscribed (code 0) is red too.
     health = rx_state.get("stream_health", "unknown")
     stream = {
         "connected": (HEALTHY, "RTP flow receiving audio"),
-        "no_audio": (PARTIALLY_HEALTHY, "subscribed, no audio on the flow"),
+        "no_audio": (UNHEALTHY, "Dante RTP flow monitor reports no audio"),
         "not_subscribed": (UNHEALTHY, "receiver is active but not subscribed to the flow"),
         "none": (INACTIVE, "no RTP flow on the Dante receiver"),
         "unknown": (PARTIALLY_HEALTHY, "RTP flow status not yet polled"),
