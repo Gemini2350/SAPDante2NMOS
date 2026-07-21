@@ -183,3 +183,15 @@ SDP-Session-Namen `s=Name : <flowid>`; `0x2204` je Slot 1..N liefert die SDP,
 sodass die Flow-ID einer Multicast direkt am Geraet (ohne SAP) ermittelbar ist.
 Builder: `dante.build_delete_tx_flow`, `delete_tx_flow`, `find_flow_id`. Der angelegte Flow wird vom Geraet per SAP announced und taucht damit
 automatisch als NMOS-Sender auf.
+
+
+## RX-Kanal unsubscriben — bestaetigt via unsubscribe_avio.pcapng (2026-07-21)
+
+Der Unsubscribe eines Dante-RX-Kanals ist der **0x3410-Bind allein**, ohne
+folgende 0x3201-Map. Im Capture (AVIO, Kanal 1+2 unsubscribed) gibt es KEIN
+einziges 0x3201; die einzigen Aktions-Requests sind zwei 0x3410-Binds, byte-
+identisch zum Subscribe-Bind. Danach faellt die Subscription-Status-Query
+(0x3600) von 144 B (mit Multicast/Quelle) auf 22 B leer. Der Bind leert also den
+Kanal; im Subscribe weist die nachfolgende Map die Quelle zu. Geraete-ACK:
+`2809 0014 <txid> 3410 0001 …`. Builder: `dante.build_clear_channel` (==
+`build_bind`), `clear_subscription`; verdrahtet in `ReceiverManager._deactivate`.

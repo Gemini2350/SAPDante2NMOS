@@ -119,6 +119,17 @@ def test_delete_tx_flow_matches_capture():
     assert dante._delete_ok(None) is False
 
 
+def test_clear_channel_matches_unsubscribe_capture():
+    # Byte-exact 0x3410 bind from unsubscribe_avio.pcapng — the unsubscribe is
+    # the bind alone (no 0x3201 map follows). ch1 txid 0x8a, ch2 txid 0x8f.
+    assert dante.build_clear_channel(1, 0x8a).hex() == \
+        "28090024008a341000000000000000000800020100010003000000000000000000000000"
+    assert dante.build_clear_channel(2, 0x8f).hex() == \
+        "28090024008f341000000000000000000800020100020003000000000000000000000000"
+    # It is exactly the subscribe bind — clearing = bind without a following map.
+    assert dante.build_clear_channel(1, 0x8a) == dante.build_bind(1, 0x8a)
+
+
 def test_flow_id_from_name():
     assert dante.flow_id_from_name("Neutrik2IN2OUT-2 : 16") == 16
     assert dante.flow_id_from_name("AVIO-USBC : 3") == 3

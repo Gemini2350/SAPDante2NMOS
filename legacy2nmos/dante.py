@@ -76,22 +76,18 @@ def build_map_channel(source_ip: str, multicast_ip: str, rtp_port: int,
 
 
 def build_clear_channel(dante_channel: int, txid: int = 0x20) -> bytes:
-    """Best-effort clear of a Dante RX channel's subscription: a 0x3201 map with
-    a zeroed source/multicast/port and stream-channel 0. TODO replace with the
-    byte-exact unsubscribe once captured from Dante Controller."""
-    p = bytearray(TPL_3201)
-    p[O_TXID:O_TXID + 2] = txid.to_bytes(2, "big")
-    p[O_SRC:O_SRC + 4] = b"\x00\x00\x00\x00"
-    p[O_STREAMCH] = 0
-    p[O_DESTCH:O_DESTCH + 2] = dante_channel.to_bytes(2, "big")
-    p[O_PORT:O_PORT + 2] = b"\x00\x00"
-    p[O_MCAST:O_MCAST + 4] = b"\x00\x00\x00\x00"
-    return bytes(p)
+    """Unsubscribe a Dante RX channel = the 0x3410 bind on its own, with no
+    following 0x3201 map. Confirmed via unsubscribe_avio.pcapng: Dante Controller
+    sends ONLY the bind (byte-identical to the subscribe bind) and the channel's
+    subscription status drops to empty. The bind clears the channel; a map would
+    re-assign a source."""
+    return build_bind(dante_channel, txid)
 
 
 def clear_subscription(device_ip: str, dante_channel: int, txid: int = 0x20,
                        timeout: float = 2.0):
-    """Send the clear for one RX channel; returns the raw device response."""
+    """Send the clear for one RX channel; returns the raw device response.
+    The device acks with 0x3410 + status 0x0001."""
     return send(device_ip, build_clear_channel(dante_channel, txid), timeout=timeout)
 
 
