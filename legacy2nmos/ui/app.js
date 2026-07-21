@@ -28,7 +28,10 @@ async function refresh() {
 
   running = state.running;
   $("btn-toggle").textContent = running ? "Stop" : "Start";
-  if (state.version) $("settings-version").textContent = "Legacy2NMOS v" + state.version;
+  if (state.version) {
+    $("settings-version").textContent = "Legacy2NMOS v" + state.version;
+    $("app-version").textContent = "v" + state.version;
+  }
 
   const chip = $("registry-chip");
   chip.title = state.registrar || "";
