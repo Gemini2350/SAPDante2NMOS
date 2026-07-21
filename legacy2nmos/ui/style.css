@@ -206,6 +206,7 @@ td.mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font
 .badge.reg      { background: #1c3627; color: var(--ok); }
 .badge.ext      { background: #303a26; color: #b8cc52; }
 .badge.pending  { background: #3a3120; color: var(--warn); }
+.badge.idle     { background: #2a3039; color: var(--text-dim); }
 .badge.stale    { background: #402224; color: var(--err); }
 
 .empty {

@@ -207,7 +207,7 @@ function receiverRow(r) {
   if (r.active) {
     const fmap = { connected: ["reg", "audio"], no_audio: ["stale", "NO AUDIO"],
       not_subscribed: ["stale", "not subscribed"],
-      none: ["stale", "no flow"], unknown: ["pending", "polling…"] };
+      none: ["idle", "no status"], unknown: ["idle", "no status"] };
     const [cls, label] = fmap[r.stream_health] || fmap.unknown;
     const codes = (r.rx_status_codes || []).join(",");
     flow = `<span title="Dante subscription codes: ${codes || "?"} `

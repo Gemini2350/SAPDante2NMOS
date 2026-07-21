@@ -83,8 +83,10 @@ def _monitor_status(rx_state):
         "no_audio": (UNHEALTHY, "Dante RTP flow monitor reports no audio"),
         "not_subscribed": (UNHEALTHY, "receiver is active but not subscribed to the flow"),
         "none": (INACTIVE, "no RTP flow on the Dante receiver"),
-        "unknown": (PARTIALLY_HEALTHY, "RTP flow status not yet polled"),
-    }.get(health, (PARTIALLY_HEALTHY, ""))
+        # No status code from the device (not polled yet / channel not reported)
+        # is "no status" — grey, not an amber warning.
+        "unknown": (INACTIVE, "RTP flow status unknown (no code from device)"),
+    }.get(health, (INACTIVE, ""))
 
     return {
         "link": (LINK_ALL_UP, ""),
@@ -96,13 +98,20 @@ def _monitor_status(rx_state):
 
 def _overall(domains):
     conn = domains["connection"][0]
+    # Receiver not active at all -> grey.
     if conn == INACTIVE:
         return INACTIVE, ""
-    worst = conn
-    if domains["stream"][0] != INACTIVE:
-        worst = max(worst, domains["stream"][0])
-    worst = max(worst, {LINK_ALL_UP: HEALTHY, LINK_SOME_DOWN: PARTIALLY_HEALTHY,
-                        LINK_ALL_DOWN: UNHEALTHY}[domains["link"][0]])
+    # Our IS-05 commands didn't reach the device -> that's the real fault.
+    if conn == UNHEALTHY:
+        return UNHEALTHY, domains["connection"][1]
+    # Connection is fine: the RTP stream status is the meaningful signal. If we
+    # have no flow status (grey/Inactive), the receiver reads grey rather than
+    # inheriting green from the healthy connection domain.
+    stream_status, _ = domains["stream"]
+    if stream_status == INACTIVE:
+        return INACTIVE, ""
+    worst = max(stream_status, {LINK_ALL_UP: HEALTHY, LINK_SOME_DOWN: PARTIALLY_HEALTHY,
+                                LINK_ALL_DOWN: UNHEALTHY}[domains["link"][0]])
     msg = "" if worst == HEALTHY else \
         next((m for s, m in domains.values() if s not in (INACTIVE, HEALTHY,
                                                           SYNC_NOT_USED) and m), "")
