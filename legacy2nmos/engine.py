@@ -77,6 +77,7 @@ class Engine:
         self._node = None
         self._device = None
         self._rx_device = None
+        self._cached_ip = None   # resolved advertised IP, kept stable per run
         self.receivers = ReceiverManager(config, self._log)
         from .lawo import LawoManager
         self.lawo = LawoManager(config, self._log)
@@ -133,6 +134,7 @@ class Engine:
 
     def restart(self):
         self.stop()
+        self._cached_ip = None   # re-resolve (interface_ip may have changed)
         with self.lock:
             self.streams.clear()
             self._sources.clear()
@@ -285,7 +287,19 @@ class Engine:
         print(line, flush=True)
 
     def _ip(self):
-        return self.config["interface_ip"] or _default_ip()
+        # The IP that goes into every advertised href (node/device/sender/control
+        # and the sender manifest). It MUST be identical across all of them and
+        # stable for the whole run: Crosspoint builds the IS-05 /active URL from
+        # the device control href and expects to reach it. On a multi-homed host
+        # `_default_ip()` can resolve to a different NIC on each call (route/VPN
+        # changes), which previously left the device href and the sender manifest
+        # on different IPs — so /active was unreachable and the multicast never
+        # showed. Pin the configured interface, else resolve once and cache.
+        if self.config["interface_ip"]:
+            return self.config["interface_ip"]
+        if not self._cached_ip:
+            self._cached_ip = _default_ip()
+        return self._cached_ip
 
     def _registrar(self):
         # A manually configured URL always wins over the discovered one.
